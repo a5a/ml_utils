@@ -19,7 +19,8 @@ import scipy as sp
 import scipydirect
 from scipy.optimize import OptimizeResult
 
-from ni.utils.util import minimize_with_restarts, timed_print as print
+from ..misc import timed_print as print
+from ..optimization import minimize_with_restarts
 
 
 class GP(object):
