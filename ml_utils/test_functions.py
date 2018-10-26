@@ -90,7 +90,7 @@ def hartmann6(x):
     for i in range(4):
         internal_sum = 0
         for j in range(6):
-            internal_sum += A[i, j] * (x[j] - P[i, j]) ** 2
+            internal_sum += A[i, j] * (x[:, j] - P[i, j]) ** 2
         external_sum += alpha[i] * np.exp(-internal_sum)
 
     return external_sum
@@ -272,7 +272,7 @@ def get_function(target_func, dim=None, big=False):
         min_loc = np.array(
             [-0.59662, -0.699978, -0.046252, -0.449336, -0.376696, 0.3146])
         min_val = -3.32237
-        X_LIM = np.vstack([-1, 1] * 6)
+        X_LIM = np.vstack([[-1, 1]] * 6)
 
     elif target_func.startswith('branin-2d'):
         f = branin
