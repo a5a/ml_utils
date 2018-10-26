@@ -62,6 +62,22 @@ def draw_from_a_gp(dim, x_lim, n=None, kern=None, seed=None):
     return pred_func
 
 
+def twosines(x: np.ndarray) -> np.ndarray:
+    """Sum of two unequal sinusoids. 1-D problem
+
+    Actual domain is [2.7, 7.5] with min_loc = 5.145735 and f_opt = -1.899599
+
+    this is shifted and scaled to [-1, 1], so min_loc = 0.019056249999999997
+
+    Parameters
+    ----------
+    x
+
+    """
+    x = (x + 1) / 2 * (7.5 - 2.7) + 2.7
+    return np.sin(x) + np.sin(10 / 3 * x)
+
+
 def hartmann6(x):
     """
     https://github.com/automl/HPOlib2/blob/master/hpolib/benchmarks
@@ -266,6 +282,13 @@ def get_function(target_func, dim=None, big=False):
 
         text = 'Camelback function'
         X_LIM = np.array([[-1, 1], [-1, 1]])
+
+    elif target_func == 'twosines-1d':
+        f = twosines
+        min_loc = np.array(
+            [0.019056249999999997])
+        min_val = -1.899599
+        X_LIM = np.array([[-1, 1]])
 
     elif target_func == 'hartmann-6d':
         f = hartmann6
