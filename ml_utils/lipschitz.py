@@ -24,7 +24,7 @@ def estimate_lipschitz_constant(
     def negative_df(x: np.ndarray) -> np.ndarray:
         model = surrogate
         x = np.atleast_2d(x)
-        dmdx = model.dmu_dx(x)
+        dmdx = model.dmu_dx(x).sum(-1)
         # simply take the norm of the expectation of the gradient
         res = np.sqrt((dmdx * dmdx).sum(1))
         return -res
@@ -32,7 +32,7 @@ def estimate_lipschitz_constant(
     if bounds is None:
         # TODO: test this
         # No bounds, no restarts, so start at highest grad in surrogate data
-        idx_biggest_grad = np.argmax(surrogate.dmu_dx(surrogate.X))
+        idx_biggest_grad = np.argmax(surrogate.dmu_dx(surrogate.X).sum(-1))
         opt_result = spo.minimize(negative_df, surrogate.X[idx_biggest_grad])
     else:
         opt_result = minimize_with_restarts(negative_df, bounds,
