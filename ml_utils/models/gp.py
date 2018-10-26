@@ -9,7 +9,7 @@ specific noisy-input GP models in nigp.py and randfuncgp.py.
 
 import sys
 from pprint import pprint
-from typing import Union, Tuple
+from typing import Union, Tuple, List, Optional
 
 import GPy
 import matplotlib
@@ -24,65 +24,74 @@ from ..optimization import minimize_with_restarts
 
 
 class GP(object):
-    """
-    Gaussian Process model
+    """Gaussian Process model
+
     Using GPy model structure as inspiration.
 
-    :param np.ndarray X: input observations
+    Parameters
+    ----------
+    X
+        input observations
 
-    :param np.ndarray Y: observed values
+    Y
+        observed values
 
-    :param GPy.kern kern: a GPy kernel, defaults to rbf
+    kern
+        a GPy kernel, defaults to rbf
 
-    :param list hyper_priors: list of GPy.prior.Prior for each non-fixed param
+    hyper_priors
+        list of GPy.prior.Prior for each non-fixed param
 
-    :param float lik_variance: Variance of the observation (Gaussian) likelihood
+    lik_variance
+        Variance of the observation (Gaussian) likelihood
 
-    :param bool lik_variance_fixed: whether the likelihood variance is fixed or
-                                can be optimized
+    lik_variance_fixed
+        whether the likelihood variance is fixed or can be optimized
 
-    :param dict opt_params:
+    opt_params
+        ['method'] = 'grad', 'multigrad', 'direct', 'slice'
 
-                        ['method'] = 'grad', 'multigrad', 'direct', 'slice'
+        ['bounds'] = bounds for hps
 
-                        ['bounds'] = bounds for hps
+        DIRECT:
+           ['n_direct_evals'] = (DIRECT) number of iterations
 
-                        DIRECT:
-                           ['n_direct_evals'] = (DIRECT) number of iterations
+        MULTIGRAD:
+            ['num_restarts'] = (multigrad) num of restarts
 
-                        MULTIGRAD:
-                            ['num_restarts'] = (multigrad) num of restarts
+            ['options'] = options to be passed to minimize()
+            e.g. {'maxiters': 100}
 
-                            ['options'] = options to be passed to minimize() e.g. {'maxiters': 100}
+        SLICE:
+            ['n_samples'] = number of slice samples to generate
 
-                        SLICE:
-                            ['n_samples'] = number of slice samples to generate
+    remove_y_mean
+        Boolean whether to remove the mean of y in the model. This is added
+        on when predicting.
 
-    :param bool remove_y_mean: Boolean whether to remove the mean of y in the model.
-                          This is added on when predicting.
+    auto_update
+        If true, then self.update() is run after data or parameters change.
+        Otherwise self.update() needs to be called manually.
 
-    :param bool auto_update: If true, then self.update() is run after data or
-                         parameters change. Otherwise self.update() needs to be
-                         called manually.
+    stabilise_mat_inv
+        whether a small amount is added to diagonal of K to help invert it.
+        This is only done if the normal inverse gave a LinAlgError
 
-    :param bool stabilise_mat_inv: whether a small amount is added to diagonal of K to help
-                                   invert it. This is only done if the normal
-                                   inverse gave a LinAlgError
-
-    :param bool or int verbose: verbose level
+    verbose
+        verbose level
     """
 
     def __init__(self, X: np.ndarray, Y: np.ndarray,
-                 kern: GPy.kern.Kern = None, lik_variance: float = None,
-                 lik_variance_fixed: bool = False,
-                 hyper_priors=None,
-                 kernel_params_fixed: bool = False, opt_params: dict = None,
-                 remove_y_mean: bool = True,
-                 stabilise_mat_inv: bool = True, auto_update: bool = True,
-                 verbose: Union[bool, int] = False) -> None:
-        """
-        init function.
-        """
+                 kern: Optional[GPy.kern.Kern] = None,
+                 lik_variance: Optional[float] = None,
+                 lik_variance_fixed: Optional[bool] = False,
+                 hyper_priors: Optional[List] = None,
+                 kernel_params_fixed: Optional[bool] = False,
+                 opt_params: Optional[dict] = None,
+                 remove_y_mean: Optional[bool] = True,
+                 stabilise_mat_inv: Optional[bool] = True,
+                 auto_update: Optional[bool] = True,
+                 verbose: Optional[Union[bool, int]] = False) -> None:
         assert X.ndim == 2 and Y.ndim == 2
         assert len(X) == len(Y)
 
@@ -90,10 +99,6 @@ class GP(object):
         # If this __init__() is called from a child class, then the child's
         # self.auto_update will overwrite this to the correct value
         self.auto_update = auto_update
-
-        # This mode will switch between sampled hps and fixed hps
-        # adding in prediction with sampling is hacky...
-        self.mode = None
 
         self.verbose = verbose
         self.remove_y_mean = remove_y_mean
@@ -115,13 +120,9 @@ class GP(object):
 
         if opt_params is None:
             self.opt_params = {'method': 'grad'}
-            self.mode = 'normal'
         else:
             self.opt_params = opt_params
-            if self.opt_params['method'] == 'slice':
-                self.mode = 'slice'
-            else:
-                self.mode = 'normal'
+
         if verbose:
             print("opt_params = ", self.opt_params)
 
@@ -134,7 +135,8 @@ class GP(object):
         self.kernel_params_fixed = kernel_params_fixed
 
         if hyper_priors is not None:
-            assert len(hyper_priors) == len(self.param_array), "Need to provide a prior for each hp!"
+            assert len(hyper_priors) == len(
+                self.param_array), "Need to provide a prior for each hp!"
         self.hyper_priors = hyper_priors
 
         # intialise the log likelihood and derivatives
@@ -151,6 +153,8 @@ class GP(object):
         self.Y = None
         self.Y_raw = None
         self.y_mean = None
+        self.output_dim = None
+
         self.set_data(X, Y, update=False)
 
         # Using the parameter passed in because this avoids running the
@@ -177,12 +181,15 @@ class GP(object):
 
     @property
     def param_array(self) -> np.ndarray:
-        """
-        The parameter array. [kernel hps, lik_variance]
+        """The parameter array. [kernel hps, lik_variance]
 
         Takes into account which hps are fixed and doesn't return those. This
         makes the optimisation using gradient descent/DIRECT easier to
         deal with.
+
+        Returns
+        -------
+        np.ndarray with the free params
         """
         # If a param is fixed, then the empty array will be ignored in the
         # hstack operation at the end
@@ -200,11 +207,15 @@ class GP(object):
 
     @param_array.setter
     def param_array(self, p: np.ndarray) -> None:
-        """
-        Update the param_array. Only updates hps that are not fixed. If fixed hps need to be changed,
-        they can be accessed directly (e.g. self.lik_variance)
+        """Update the param_array.
 
-        :param np.ndarray p: New param array
+        Only updates hps that are not fixed. If fixed hps need to be
+        changed, they can be accessed directly (e.g. self.lik_variance)
+
+        Parameters
+        ----------
+        p
+            New param array
         """
 
         # Check that p is the right size
@@ -229,9 +240,14 @@ class GP(object):
 
     @property
     def gradient(self) -> np.ndarray:
-        """
-        Returns an array of the gradients of the likelihood wrt the kernel hps and the likelihood variance
-        Takes into account which hps are fixed and doesn't return those gradients.
+        """Returns an array of the gradients of the likelihood wrt the
+        kernel hps and the likelihood variance Takes into account which hps
+        are fixed and doesn't return those gradients.
+
+        Returns
+        -------
+        np.ndarray with the gradients of the free params
+
         """
         # If a param is fixed, then the empty array will be ignored in the
         # hstack operation at the end
@@ -249,15 +265,21 @@ class GP(object):
 
     def set_data(self, X: np.ndarray = None, Y: np.ndarray = None,
                  update: bool = True) -> None:
-        """
-        Sets the fields that are provided
+        """Sets the fields that are provided
 
         NOTE: update parameter has no effect. Leaving it in for now in case
         it is used somewhere.
 
-        :param np.ndarray X: new X data
-        :param np.ndarray Y: new Y data
-        :param bool update: If True, then runs the internal self.update() function. Default = True
+        Parameters
+        ----------
+        X
+            new X data
+
+        Y
+            new Y data
+
+        update
+            (DOES NOTHING)
         """
         if X is None:
             X = self.X
@@ -265,7 +287,7 @@ class GP(object):
             Y = self.Y_raw
 
         assert len(X) == len(Y)
-        self.X, self.Y_raw = X.copy(), Y.copy()
+        self.X, self.Y_raw = X.copy().astype(float), Y.copy().astype(float)
 
         self.y_mean = np.mean(Y)
         if self.remove_y_mean:
@@ -275,30 +297,20 @@ class GP(object):
         else:
             self.Y = self.Y_raw
 
+        self.output_dim = Y.shape[1]
+
         if self.auto_update:
             self.update()
 
     def set_XY(self, X: np.ndarray = None, Y: np.ndarray = None,
                update: bool = True) -> None:
-        """
-        GPy interface uses this name. This runs self.set_data()
-        """
+        """GPy interface uses this name. This runs self.set_data()"""
+
         self.set_data(X=X, Y=Y, update=update)
 
-    def add_data(self, X: np.ndarray, Y: np.ndarray) -> None:
-        """
-        Unused function. Add a single [X, Y] location to the training data
-
-        :param np.ndarray X: The new X location to add
-        :param np.ndarray Y: The new Y location to add
-        """
-        xx = np.vstack((self.X, X))
-        yy = np.vstack((self.Y, Y))
-        self.set_data(X=xx, Y=yy)
-
     def update(self) -> None:
-        """
-        Update things
+        """Update things
+
         Called when params and/or data are changed
         """
         # # requires "import inspect" at the top of the file"
@@ -364,11 +376,16 @@ class GP(object):
         return log_prior_grad
 
     def objective(self, theta: np.ndarray = None) -> float:
-        """
-        Objective function provided to optimiser. Input is an array of theta
+        """Objective function provided to optimiser.
 
-        :param np.ndarray theta: Parameter array at which to evaluate the log likelihood
-        :return: log likelihood
+        Parameters
+        ----------
+        theta
+            Parameter array at which to evaluate the log likelihood
+
+        Returns
+        -------
+        float log likelihood
         """
         if theta is not None:
             self.param_array = theta.flatten()
@@ -379,12 +396,17 @@ class GP(object):
             print("objective", result)
         return result
 
-    def objective_grad(self, theta: np.ndarray=None) -> np.ndarray:
-        """
-        Gradients of the likelihood w.r.t. theta
+    def objective_grad(self, theta: np.ndarray = None) -> np.ndarray:
+        """Gradients of the likelihood w.r.t. theta
 
-        :param np.ndarray theta: Parameter array at which to evaluate the gradient
-        :return: gradient as np.ndarray
+        Parameters
+        ----------
+        theta
+            Parameter array at which to evaluate the gradient
+
+        Returns
+        -------
+        gradient as np.ndarray
         """
         if theta is not None:
             self.param_array = theta.flatten()
@@ -399,34 +421,56 @@ class GP(object):
         return grad
 
     def objective_log_theta(self, log_theta: np.ndarray) -> float:
-        """
-        Objective function provided to optimiser. Input is an array of log(theta)
+        """Objective function provided to optimiser.
 
-        :param np.ndarray log_theta: Log(theta) at which to evaluate the objective
-        :return: log likelihood at log(theta)
+        Parameters
+        ----------
+        log_theta
+            Log(theta) at which to evaluate the objective
+
+        Returns
+        -------
+        log likelihood at log(theta)
         """
         return self.objective(np.exp(log_theta).flatten())
 
     def objective_grad_log_theta(self, log_theta: np.ndarray) -> np.ndarray:
-        """
-        Gradients of the likelihood w.r.t. log(theta)
+        """Gradients of the likelihood w.r.t. log(theta)
 
-        :param np.ndarray log_theta: Log(theta) at which to evaluate the gradient
-        :return: gradient as np.ndarray
+        Parameters
+        ----------
+        log_theta
+            Log(theta) at which to evaluate the gradient
+
+        Returns
+        -------
+        gradient as np.ndarray
         """
-        return -self.param_array * self.objective_grad(np.exp(log_theta).flatten())
+        return -self.param_array * self.objective_grad(
+            np.exp(log_theta).flatten())
 
     def optimize(self, opt_params: dict = None,
                  verbose: Union[int, bool] = False) -> OptimizeResult:
-        """
-        Optimizer - for now only allowing positive hps for gradient descent by running the optimisation in log space.
+        """Optimize function
+
+        For now only allowing positive hps for gradient descent by running
+        the optimisation in log space.
 
         DIRECT and slice are bounded by the opt_params['hp_bounds'] field.
 
         opt_params allows us to provide a different set of optimization
 
-        :param dict opt_params: Dictionary with the optimisation params. More details in the class docstring.
-        :param int or bool verbose:
+        Parameters
+        ----------
+        opt_params
+            Dictionary with the optimisation params. More details in the
+            class docstring.
+
+        verbose
+
+        Returns
+        -------
+        OptimizeResult object
         """
         # Avoids UnboundLocalError by defining 'res' in case the
         # optimisation procedure doesn't have an obvious return object
@@ -539,47 +583,10 @@ class GP(object):
 
         # return res
 
-    # def predict_with_additional_data(self, data, x_star, y_star=None,
-    #                                  optimize=False):
-    #     """
-    #     Unused function.
-    #
-    #     Posterior over x_star, given the current GP's data as well as
-    #     the provided data = [x, y], WITHOUT adding it permanently to
-    #     the model's data.
-    #     """
-    #     print("warning: don't use predict_with_additional_data().")
-    #     raise NotImplementedError
-    #     # make it so that two update steps are not required each time.
-    #     # This should be possible given all precomputed matrices
-    #     # and some matrix identities
-    #
-    #     # Save the current data arrays.
-    #     # We will set the model data to these later
-    #     old_x, old_y = self.x, self.y
-    #
-    #     # Add the extra points
-    #     self.add_data(data[:, 0], data[:, 1])
-    #     if optimize:
-    #         self.optimize()
-    #
-    #     # Get the predictions and then undo the damage...
-    #     if y_star is not None:
-    #         mu, var, log_prob = self.predict(x_star, y_star=y_star)
-    #     else:
-    #         mu, var = self.predict(x_star)
-    #     self.set_data(X=old_x, Y=old_y)
-    #
-    #     if y_star is not None:
-    #         return mu, var, log_prob
-    #     else:
-    #         return mu, var
-
     def predict(self, x_star: np.ndarray, y_star: np.ndarray = None,
-                mode: str = None, full_cov: bool = False) -> \
-            Tuple[np.ndarray, np.ndarray]:
-        """
-        prediction of mean and variance.
+                full_cov: bool = False) -> Tuple:
+        """Prediction of mean and variance.
+
         If y_star is given, then the log probabilities of the posterior are
         also provided as the third output
 
@@ -588,42 +595,24 @@ class GP(object):
         be quite slow, so use the sampling model-wrapper in model_collection.py
         for a slightly faster, but more memory-intensive implementation.
 
-        :param np.ndarray x_star: Locations to predict at
-        :param np.ndarray y_star: (optional) True values of y at x_star
-        :param str mode: this param will be removed
-        :param bool full_cov: whether we want the full covariance
-        :return: predicted mean, predicted var (, log likelihood)
+        Parameters
+        ----------
+        x_star
+            Locations to predict at
+
+        y_star
+            (optional) True values of y at x_star
+
+        full_cov
+            whether we want the full covariance
+
+        Returns
+        -------
+        (predicted mean, predicted var (, log likelihood))
         """
-        if mode is None:
-            mode = self.mode
-
-        if mode == 'normal' or mode == 'old':
-            mu, var = self.predict_latent(x_star, full_cov=full_cov, mode=mode)
-            # add observation noise
-            var += self._lik_variance
-
-        elif mode == 'slice':
-            print("Running slice sampling predict() inside a model class!",
-                  "Do this in a model_collection instead!")
-            raise NotImplementedError
-            # if full_cov:
-            #     print("Fix dimensions of var for full_cov!")
-            #     raise NotImplementedError
-            # # Predict using each sampled hp and return the mean posterior
-            # hps = self.opt_params['slice_hps']
-            # mu = np.zeros((len(x_star), 1))
-            # var = np.zeros((len(x_star), 1))
-
-            # # no need to hold on to each sample's values, so just adding
-            # # them all together and then dividing by n after the loop
-            # for ii in range(len(hps)):
-            #     self.param_array = hps[ii]
-            #     m, v = self.predict_latent(x_star, mode='normal')
-            #     v += self.lik_variance
-            #     mu += m
-            #     var += v
-            # mu = mu / len(hps)
-            # var = var / len(hps)
+        mu, var = self.predict_latent(x_star, full_cov=full_cov)
+        # add observation noise
+        var += self._lik_variance
 
         if y_star is not None:
             log_prob = -0.5 * (np.log(2 * np.pi) + np.log(var) +
@@ -631,70 +620,59 @@ class GP(object):
             return mu, var, log_prob
         return mu, var
 
-    def predict_latent(self, x_star: np.ndarray, mode: str = None,
+    def predict_latent(self, x_star: np.ndarray,
                        full_cov: bool = False) -> \
             Tuple[np.ndarray, np.ndarray]:
-        """
-        latent function prediction
+        """latent function prediction
 
-        :param np.ndarray x_star: Locations to predict at
-        :param str mode: this param will be removed
-        :param bool full_cov: whether we want the full covariance
-        :return: predicted mean, predicted var (, log likelihood)
+        Parameters
+        ----------
+        x_star
+            Locations to predict at
+
+        full_cov
+            whether we want the full covariance
+
+        Returns
+        -------
+        (predicted mean, predicted var (, log likelihood))
 
         """
         assert x_star.ndim == 2
 
-        if mode is None:
-            mode = self.mode
+        k_star = self.kern.K(x_star, self.X)
+        k_star_star = self.kern.K(x_star, x_star)
 
-        if mode == 'normal':
-            k_star = self.kern.K(x_star, self.X)
-            k_star_star = self.kern.K(x_star, x_star)
+        mu = k_star.dot(self.alpha)
+        # If the y data has been transformed to zero-mean,
+        # then undo that here
+        if self.remove_y_mean:
+            mu += self.y_mean
 
-            mu = k_star.dot(self.alpha)
-            # If the y data has been transformed to zero-mean,
-            # then undo that here
-            if self.remove_y_mean:
-                mu += self.y_mean
-
-            var = k_star_star - k_star.dot(self.Ka_inv.dot(k_star.T))
-            # Need to copy, else np.diag returns read-only array
-            if not full_cov:
-                var = np.diag(var).copy().reshape(mu.shape)
-
-        elif mode == 'slice':
-            print("Running slice sampling predict() inside a model class!",
-                  "Do this in a model_collection instead!")
-            raise NotImplementedError
-            # if full_cov:
-            #     print("Fix dimensions of var for full_cov!")
-            #     raise NotImplementedError
-            # # Predict using each sampled hp and return the mean posterior
-            # hps = self.opt_params['slice_hps']
-            # mu = np.zeros((len(x_star), 1))
-            # var = np.zeros((len(x_star), 1))
-
-            # # no need to hold on to each sample's values, so just adding
-            # # them all together and then dividing by n after the loop
-            # for ii in range(len(hps)):
-            #     self.param_array = hps[ii]
-            #     m, v = self.predict_latent(x_star, mode='normal')
-            #     mu += m
-            #     var += v
-            # mu = mu / len(hps)
-            # var = var / len(hps)
+        var = k_star_star - k_star.dot(self.Ka_inv.dot(k_star.T))
+        # Need to copy, else np.diag returns read-only array
+        if not full_cov:
+            var = np.diag(var).copy().reshape(mu.shape)
 
         return mu, var
 
     def compute_Ka(self, X: np.ndarray = None,
                    X2: np.ndarray = None) -> np.ndarray:
-        """
-        Returns the complete covariance matrix (kernel + lik). If X is not provided, then the GP's own data is used.
+        """Returns the complete covariance matrix (kernel + lik).
 
-        :param np.ndarray X: (optional) input locations
-        :param np.ndarray X2: (optional) input locations
-        :return: k(X, X2)
+        If X is not provided, then the GP's own data is used.
+
+        Parameters
+        ----------
+        X
+            (optional) input locations
+
+        X
+            (optional) input locations
+
+        Returns
+        -------
+        k(X, X2)
         """
         if X is None:
             X = self.X
@@ -705,12 +683,19 @@ class GP(object):
 
     def log_likelihood(self, Ka_inv: np.ndarray = None,
                        LogDetKa: float = None) -> float:
-        """
-        log likelihood computation.
+        """log likelihood computation.
 
-        :param np.ndarray Ka_inv: (optional) Inverse of Ka
-        :param float LogDetKa: (optional) log(det(Ka))
-        :return: marginal log likelihood of the GP
+        Parameters
+        ----------
+        Ka_inv
+            (optional) Inverse of Ka
+
+        LogDetKa
+            (optional) log(det(Ka))
+
+        Returns
+        -------
+        marginal log likelihood of the GP
         """
         # if self.mode == 'slice':
         #   print("log_likelihood() only meant for use in self.mode = normal!")
@@ -731,17 +716,28 @@ class GP(object):
     def compute_dL_dK(self, Ka_inv: np.ndarray = None,
                       Chol_Ka: np.ndarray = None, alpha: np.ndarray = None) \
             -> np.ndarray:
-        """
-        Compute the derivative of the log likelihood w.r.t. the covariance
-        matrix K. This is passed to the update_gradients function of the kernel to
+        """Compute the derivative of the log likelihood w.r.t. the covariance
+        matrix K.
+
+        This is passed to the update_gradients function of the kernel to
         compute the gradients wrt theta.
 
         If an arg is not passed to the function, the self.arg is used.
 
-        :param np.ndarray Ka_inv: (optional) Inverse of Ka
-        :param np.ndarray Chol_Ka: (optional) Cholesky decomposition of Ka
-        :param np.ndarray alpha: (optional) alpha term (see e.g. Rasmussen's book Ch. 2)
-        :return: dL/dK
+        Parameters
+        ----------
+        Ka_inv
+            (optional) Inverse of Ka
+
+        Chol_Ka
+            (optional) Cholesky decomposition of Ka
+
+        alpha
+            (optional) alpha term (see e.g. Rasmussen's book Ch. 2)
+
+        Returns
+        -------
+        dL/dK
         """
         if Chol_Ka is None:
             Chol_Ka = self.Chol_Ka
@@ -756,22 +752,59 @@ class GP(object):
 
     def dmu_dx(self, x_star: np.ndarray) -> np.ndarray:
         """
-        Returns the derivative of the posterior mean evaluated at locations x_star. Only works for 1D inputs
+        Returns the derivative of the posterior mean evaluated at locations
+        x_star.
 
-        :param np.ndarray x_star:
-        :return:
+        Keeping this function as this interface is used in some old code.
+
+        Parameters
+        ----------
+        x_star
+
+        Returns
+        -------
+        dmu/dx at x_star
         """
-        # TODO: Check if this is still restricted to 1D
-        # NOTE: only works for 1D
-        assert x_star.ndim == 2 and x_star.shape[1] == self.X.shape[1]
-        # dk_star = -1/self.kern.lengthscale * (x_star - self.X.T) * \
-        #           self.kern.K(x_star, self.X)
-        # dr_dx is effectively a +/- mask, but so far only for 1D inputs
-        dr_dx = np.sign(x_star - self.X.T)
-        dk_star = self.kern.dK_dr_via_X(x_star, self.X) * dr_dx
+        return self.dposterior_dx(x_star)[0]
 
-        dmu_dx = dk_star.dot(self.alpha)
-        return dmu_dx
+    def dposterior_dx(self, x_star: np.ndarray) \
+            -> Tuple[np.ndarray, np.ndarray]:
+        """Computes the gradient of the posterior
+
+        Not the same as the mean and variance of the derivative!
+
+        Somewhat clunky code because it's adapted from GPy directly.
+
+        Parameters
+        ----------
+        x_star
+            Points to evaluate the derivative at
+
+        Returns
+        -------
+        (dmu_dx, dvar_dx) at x_star
+        """
+        kern = self.kern
+        woodbury_vector = self.alpha
+        woodbury_inv = self.Ka_inv
+        mean_jac = np.empty(
+            (x_star.shape[0], x_star.shape[1], self.output_dim))
+        for i in range(self.output_dim):
+            mean_jac[:, :, i] = \
+                kern.gradients_X(woodbury_vector[:, i:i + 1].T,
+                                 x_star,
+                                 self.X)
+
+        # Gradients wrt the diagonal part k_{xx}
+        dv_dX = kern.gradients_X_diag(np.ones(x_star.shape[0]), x_star)
+
+        var_jac = dv_dX
+        alpha = -2. * np.dot(kern.K(x_star, self.X),
+                             woodbury_inv)
+
+        var_jac += kern.gradients_X(alpha, x_star, self.X)
+
+        return mean_jac, var_jac
 
     # @classmethod
     def plot(self, model=None, n: int = None, eps: float = None,
@@ -779,21 +812,36 @@ class GP(object):
              title: str = None, ylim: np.ndarray = None,
              return_fig_handle: bool = False) \
             -> Union[None, plt.Figure]:
-        """
-        Plot the model (data, mean and variance)
+        """Plot the model (data, mean and variance)
 
         Optionally provide a model class. This uses all relevant info
         from this class to create the plot. Using this for model_collection
         objects.
 
-        :param model: (optional) provides alternative model class to plot
-        :param n: number of points to evaluate for the plot. Default 1D = 200, 2D = 75 in each direction
-        :param eps: how much to extend over the limits of the training data. Default 0.05.
-        :param cmap: matplotlib colormap
-        :param title: Title string of the plot
-        :param ylim: [min, max] of y-axis
-        :param return_fig_handle: whether to return the figure handle
+        Parameters
+        ----------
+        model
+            (optional) provides alternative model class to plot
 
+        n
+            number of points to evaluate for the plot. Default 1D = 200,
+            2D = 75 in each direction
+
+        eps
+            how much to extend over the limits of the training data. Default
+            0.05.
+
+        cmap
+            matplotlib colormap
+
+        title
+            Title string of the plot
+
+        ylim
+            [min, max] of y-axis
+
+        return_fig_handle
+            whether to return the figure handle
         """
         # Hack to allow wrapper models to use this function until I fix this
         if model is not None:
@@ -1013,8 +1061,6 @@ if __name__ == '__main__':
     print(m_map)
     m_map.plot()
     plt.show()
-
-
 
     ################################################################
     ################################################################
