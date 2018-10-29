@@ -6,6 +6,7 @@ Test functions for global optimisation.
 Some of these are based on the following library:
     BayesOpt, an efficient C++ library for Bayesian optimization.
 """
+from typing import Tuple, Callable
 
 import numpy as np
 import GPy
@@ -75,7 +76,12 @@ def twosines(x: np.ndarray) -> np.ndarray:
 
     """
     x = (x + 1) / 2 * (7.5 - 2.7) + 2.7
-    return np.sin(x) + np.sin(10 / 3 * x)
+    res = np.sin(x) + np.sin(10 / 3 * x)
+    if x.ndim > 1:
+        res = res.sum(-1)
+
+    print(f"twosines({x}) = {res}")
+    return res
 
 
 def hartmann6(x):
@@ -220,48 +226,29 @@ def rosenbrock(x):
     return (1 - x[:, 0]) ** 2 + 100 * (x[:, 1] - x[:, 0] ** 2) ** 2
 
 
-# def levy(x):
-#     """
-#     Levy function
-#     https://www.sfu.ca/~ssurjano/levy.html
-#
-#     f(x_min) = 0
-#
-#     """
-#     x = np.atleast_2d(x * 10.)
-#
-#     def w(xx, ii):
-#         """Helper function"""
-#         return 1 + (xx[:, ii] - 1) / 4
-#
-#     return np.sin(np.pi * w(x, 0)) ** 2 + \
-#            np.sum(np.hstack([(w(x, ii) - 1) ** 2 * (
-#                    1 + 10 * np.sin(np.pi * w(x, ii) + 1) ** 2)
-#                              for ii in range(x.shape[1] - 1)]), axis=0) + \
-#            (w(x, -1) - 1) ** 2 * (1 + np.sin(2 * np.pi * w(x, -1) + 1) ** 2)
+def levy(x):
+    """
+    Levy function
+    https://www.sfu.ca/~ssurjano/levy.html
+
+    f(x_min) = 0
+
+    """
+    x = np.atleast_2d(x * 10.)
+
+    def w(xx, ii):
+        """Helper function"""
+        return 1 + (xx[:, ii] - 1) / 4
+
+    return np.sin(np.pi * w(x, 0)) ** 2 + \
+           np.sum(np.hstack([(w(x, ii) - 1) ** 2 * (
+                   1 + 10 * np.sin(np.pi * w(x, ii) + 1) ** 2)
+                             for ii in range(x.shape[1] - 1)]), axis=0) + \
+           (w(x, -1) - 1) ** 2 * (1 + np.sin(2 * np.pi * w(x, -1) + 1) ** 2)
 
 
-# def shc(x):
-#     """
-#     Six-Hump Camel function
-#     https://www.sfu.ca/~ssurjano/camel6.html
-#
-#     Original space is x_0 = [-3, 3] and x_1 = [-2, 2]
-#
-#     Here both are re-scaled to [-1, 1] and cropped to avoid huge values
-#
-#     f(x_min) = -1.0316
-#
-#     """
-#     scaling = np.array([2., 1.])
-#
-#     x = np.atleast_2d(x) * scaling
-#
-#     return (4 - 2.0 * x[:, 0] ** 2 + x[:, 0] ** 4 / 3) * x[:, 0] ** 2 + \
-#            x[:, 0] * x[:, 1] + (-4 + 4 * x[:, 1] ** 2) * x[:, 1] ** 2
-
-
-def get_function(target_func, dim=None, big=False):
+def get_function(target_func, big=False) \
+        -> Tuple[Callable, np.ndarray, np.ndarray, float]:
     """
     Get objects and limits for a chosen function
 
@@ -280,15 +267,17 @@ def get_function(target_func, dim=None, big=False):
             f = f_
             min_val = -1.0316
 
-        text = 'Camelback function'
         X_LIM = np.array([[-1, 1], [-1, 1]])
 
-    elif target_func == 'twosines-1d':
+    elif target_func.startswith('twosines'):
+        if len(target_func.split("-")) > 1:
+            dim = int(target_func.split("-")[1][:-1])
+        else:
+            dim = 1
         f = twosines
-        min_loc = np.array(
-            [0.019056249999999997])
+        min_loc = np.array([0.019056249999999997] * dim)
         min_val = -1.899599
-        X_LIM = np.array([[-1, 1]])
+        X_LIM = np.vstack([[-1, 1]] * dim)
 
     elif target_func == 'hartmann-6d':
         f = hartmann6
@@ -301,7 +290,6 @@ def get_function(target_func, dim=None, big=False):
         f = branin
         min_loc = np.array([0.08559, -0.6966])
         min_val = 0.0013
-        text = 'Branin function'
         X_LIM = np.array([[-1, 1], [-1, 1]])
 
     elif target_func.startswith('michalewicz'):
@@ -324,7 +312,6 @@ def get_function(target_func, dim=None, big=False):
 
         min_val = -4.687
 
-        text = 'Michalewicz function'
         X_LIM = np.vstack([[-1, 1]] * dim)
 
     elif target_func.startswith('ackley'):
@@ -342,7 +329,6 @@ def get_function(target_func, dim=None, big=False):
         else:
             f = f_
         X_LIM = np.vstack([np.array([-1., 1])] * dim)
-        text = 'Ackley function'
 
     elif target_func.startswith('rosenbrock-2d'):
         f_ = rosenbrock
@@ -355,42 +341,30 @@ def get_function(target_func, dim=None, big=False):
         min_val = 0
 
         X_LIM = np.array([[-1, 1], [-1, 1]])
-        text = 'Rosenbrock function'
 
-    # elif target_func.startswith('levy'):
-    #     f = levy
-    #
-    #     if len(target_func.split("-")) > 1:
-    #         dim = int(target_func.split("-")[1][:-1])
-    #     else:
-    #         dim = 2
-    #
-    #     min_loc = np.ones(dim)
-    #     min_val = 0
-    #     f.__name__ = f'levy-{dim}d'
-    #     X_LIM = np.vstack([np.array([-1., 1])] * dim)
-    #     text = 'Levy function'
-    #
-    # elif target_func.startswith('shc'):
-    #     f = shc
-    #     min_loc = np.array([[0.0898 / 2, -0.7126],
-    #                         [-0.0898 / 2, 0.7126]])
-    #     min_val = -1.0316
-    #     X_LIM = np.array([[-1, 1], [-1, 1]])
-    #     text = 'SHC function'
+    elif target_func.startswith('levy'):
+        f = levy
+
+        if len(target_func.split("-")) > 1:
+            dim = int(target_func.split("-")[1][:-1])
+        else:
+            dim = 2
+
+        min_loc = np.ones(dim)
+        min_val = 0
+        X_LIM = np.vstack([np.array([-1., 1])] * dim)
 
     elif target_func.startswith('quadratic'):
         f = quadratic
         min_loc = np.array([0.53, 0.53])
         min_val = 10.2809
         X_LIM = np.array([[-1, 1], [-1, 1]])
-        text = 'Quadratic function'
     else:
         print("target_func with name", target_func, "doesn't exist!")
         raise NotImplementedError
 
     f.__name__ = target_func
-    return (f, X_LIM, min_loc, min_val)
+    return f, X_LIM, min_loc, min_val
 
 
 def plot_test_func(target_func, *args):
