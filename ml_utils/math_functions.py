@@ -77,10 +77,8 @@ def twosines(x: np.ndarray) -> np.ndarray:
     """
     x = (x + 1) / 2 * (7.5 - 2.7) + 2.7
     res = np.sin(x) + np.sin(10 / 3 * x)
-    if x.ndim > 1:
-        res = res.sum(-1)
+    res = res.sum(-1)
 
-    print(f"twosines({x}) = {res}")
     return res
 
 
@@ -276,7 +274,7 @@ def get_function(target_func, big=False) \
             dim = 1
         f = twosines
         min_loc = np.array([0.019056249999999997] * dim)
-        min_val = -1.899599
+        min_val = -1.899599 * dim
         X_LIM = np.vstack([[-1, 1]] * dim)
 
     elif target_func == 'hartmann-6d':
