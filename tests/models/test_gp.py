@@ -84,7 +84,43 @@ def test_dmu_dx():
     plt.show()
 
 
+def test_ard():
+    x = np.hstack([np.arange(4).astype(float)[:, None]]*2)
+
+    y = 5 * np.sin(x).sum(-1).reshape(-1, 1)
+    y -= np.mean(y)
+    kern = GPy.kern.RBF(2, ARD=True)
+
+    hp_bounds = np.array([[1e-6, 1e6],  # kernel variance
+                          *[[1e-4, 1e3]]*x.shape[1],  # lengthscale
+                          # [1e-6, 1e6]  # likelihood variance
+                          ])
+
+    hyper_priors = [GPy.priors.Gamma(a=1.0, b=0.1),
+                    # lengthscale prior keeps it small-ish
+                    *[GPy.priors.Gamma(a=1.5, b=1.5)]*x.shape[1],
+                    # GPy.priors.Gamma(a=1.0, b=0.1)
+                    ]
+
+    gp_opt_params = {'method': 'multigrad',
+                     'num_restarts': 10,
+                     'restart_bounds': np.array([[1e-6, 10],  # kernel variance
+                                                 *[[1e-4, 5]]*x.shape[1],  # lengthscale
+                                                 ]),
+                     'hp_bounds': hp_bounds,
+                     'verbose': False}
+
+    surrogate = GP(x, y, kern, lik_variance=1e-3, lik_variance_fixed=True,
+                   opt_params=gp_opt_params,
+                   hyper_priors=hyper_priors)
+    surrogate.optimize()
+
+
+
+
+
 if __name__ == '__main__':
     # test_predictive_gradients()
     # test_optimization_doesnt_crash()
-    test_dmu_dx()
+    # test_dmu_dx()
+    test_ard()
