@@ -63,6 +63,41 @@ def draw_from_a_gp(dim, x_lim, n=None, kern=None, seed=None):
     return pred_func
 
 
+def shekel(x: np.ndarray) -> np.ndarray:
+    """Shekel
+
+    Actual domain is [0, 1]
+
+    this is shifted and scaled to [-1, 1]
+
+    Parameters
+    ----------
+    x
+
+    """
+    x = (x + 1) / 2
+    x = np.atleast_2d(x)
+    m = 10
+    b = 0.1 * np.array([1, 2, 2, 4, 4, 6, 3, 7, 5, 5])[:, None]
+    C = np.array([[4.0, 1.0, 8.0, 6.0, 3.0, 2.0, 5.0, 8.0, 6.0, 7.0],
+                  [4.0, 1.0, 8.0, 6.0, 7.0, 9.0, 3.0, 1.0, 2.0, 3.6],
+                  [4.0, 1.0, 8.0, 6.0, 3.0, 2.0, 5.0, 8.0, 6.0, 7.0],
+                  [4.0, 1.0, 8.0, 6.0, 7.0, 9.0, 3.0, 1.0, 2.0, 3.6]])
+    outer = 0.0
+    for i in range(m):
+        bi = b[i]
+        inner = 0
+        for j in range(4):
+            xj = x[:, j] * 10
+            Cji = C[j, i]
+            inner = inner + (xj - Cji) ** 2
+
+        outer = outer + 1 / (inner + bi)
+
+    y = - outer
+    return y
+
+
 def twosines(x: np.ndarray) -> np.ndarray:
     """Sum of two unequal sinusoids. 1-D problem
 
@@ -306,7 +341,7 @@ def get_function(target_func, big=False) \
         elif dim == 5:
             min_loc = np.array([0.3191, 0., -0.1691, 0.2203, 0.09419])
         else:
-            raise NotImplementedError
+            min_loc = None
 
         min_val = -4.687
 
@@ -352,11 +387,21 @@ def get_function(target_func, big=False) \
         min_val = 0
         X_LIM = np.vstack([np.array([-1., 1])] * dim)
 
+    elif target_func == 'shekel-4d':
+        f = shekel
+        min_loc = np.array([[-0.19985063, -0.20009811,
+                             -0.19985063, -0.20009811]])
+        min_val = shekel(min_loc)
+        X_LIM = np.vstack([[-1, 1]] * 4)
+
+
     elif target_func.startswith('quadratic'):
         f = quadratic
         min_loc = np.array([0.53, 0.53])
         min_val = 10.2809
         X_LIM = np.array([[-1, 1], [-1, 1]])
+
+
     else:
         print("target_func with name", target_func, "doesn't exist!")
         raise NotImplementedError
