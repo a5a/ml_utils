@@ -1,4 +1,5 @@
 """Optimization utilities"""
+from typing import Callable, Optional, Dict
 
 import numpy as np
 import scipy as sp
@@ -98,6 +99,87 @@ def minimize_with_restarts(optimiser_func, restart_bounds, num_restarts=5,
     return best_opt_result
 
 
+def sample_then_minimize(
+        optimiser_func: Callable, sampling_bounds: np.ndarray,
+        num_samples: Optional[int] = 1000, num_local: Optional[int] = 5,
+        jac: Optional[Callable] = None,
+        minimize_options: Optional[Dict] = None,
+        evaluate_sequentially: Optional[bool] = True,
+        verbose: Optional[bool] = False) -> optimize.OptimizeResult:
+    """Samples from the func and then optimizes the most promising locations
+
+    Parameters
+    ----------
+    optimiser_func
+        Function to be minimized. Inputs are expected to be 2D.
+
+    sampling_bounds
+        Bounds for sampling and optimization
+
+    num_samples
+        Number of initial samples to take. Sampling is done uniformly
+        using the bounds as limits
+
+    num_local
+        Number of local optimizations. This is the number of most promising
+        samples used as starting points for minimize()
+    jac
+        If available, the jacobian of optimiser_func
+
+    minimize_options
+        Options passed to minimize(), e.g. maxiter
+
+    evaluate_sequentially
+        Whether the optimiser_func can return the result for multiple inputs.
+        This is not the case for e.g. the log likelihood of a GP, but may
+        be possible for an acquisition function. Default behaviour is to
+        evaluate the optimiser_func sequentially.
+
+    verbose
+
+    Returns
+    -------
+    scipy OptimizeResult of the best local optimization
+    """
+    x_samples = np.random.uniform(sampling_bounds[:, 0],
+                                  sampling_bounds[:, 1],
+                                  (num_samples, sampling_bounds.shape[0]))
+    if evaluate_sequentially:
+        if verbose:
+            print(f"Evaluating {num_samples} locations sequentially")
+
+        f_samples = np.zeros(num_samples)
+        for ii in range(num_samples):
+            f_samples[ii] = optimiser_func(x_samples[ii])
+    else:
+        if verbose:
+            print(f"Evaluating {num_samples} locations")
+
+        f_samples = optimiser_func(x_samples)
+
+    best_indexes = f_samples.argsort()[-num_local:][::-1]
+    x_locals = x_samples[best_indexes]
+
+    if verbose:
+        print(f"Locally optimizing the top {num_local} locations")
+
+    best_result = None
+    best_f = np.inf
+    for ii in range(num_local):
+        x0 = np.atleast_2d(x_locals[ii])
+        res = sp.optimize.minimize(
+            optimiser_func, x0, jac=jac,
+            options=minimize_options)  # type: optimize.OptimizeResult
+
+        if res.fun < best_f:
+            best_result = res
+            best_f = res.fun
+
+    if verbose:
+        print(f"Best result found: {best_result.x} "
+              f"has function value {best_result.fun}")
+
+    return best_result
 
 if __name__ == '__main__':
     def f(x):
