@@ -303,9 +303,8 @@ def get_function(target_func, big=False) \
         X_LIM = np.array([[-1, 1], [-1, 1]])
 
     elif target_func.startswith('twosines'):
-        if len(target_func.split("-")) > 1:
-            dim = int(target_func.split("-")[1][:-1])
-        else:
+        dim = get_dim_from_name(target_func)
+        if dim is None:
             dim = 1
         f = twosines
         min_loc = np.array([0.019056249999999997] * dim)
@@ -327,9 +326,8 @@ def get_function(target_func, big=False) \
 
     elif target_func.startswith('michalewicz'):
         f = michalewicz
-        if len(target_func.split("-")) > 1:
-            dim = int(target_func.split("-")[1][:-1])
-        else:
+        dim = get_dim_from_name(target_func)
+        if dim is None:
             dim = 2
 
         if dim == 2:
@@ -350,10 +348,9 @@ def get_function(target_func, big=False) \
     elif target_func.startswith('ackley'):
         f_ = ackley
 
-        if len(target_func.split("-")) > 1:
-            dim = int(target_func.split("-")[1][:-1])
-        else:
-            dim = 1
+        dim = get_dim_from_name(target_func)
+        if dim is None:
+            dim = 2
 
         min_loc = np.zeros(dim)
         if not big:
@@ -378,9 +375,8 @@ def get_function(target_func, big=False) \
     elif target_func.startswith('levy'):
         f = levy
 
-        if len(target_func.split("-")) > 1:
-            dim = int(target_func.split("-")[1][:-1])
-        else:
+        dim = get_dim_from_name(target_func)
+        if dim is None:
             dim = 2
 
         min_loc = np.ones(dim)
@@ -394,8 +390,7 @@ def get_function(target_func, big=False) \
         min_val = shekel(min_loc)
         X_LIM = np.vstack([[-1, 1]] * 4)
 
-
-    elif target_func.startswith('quadratic'):
+    elif target_func.startswith('quadratic-2d'):
         f = quadratic
         min_loc = np.array([0.53, 0.53])
         min_val = 10.2809
@@ -408,6 +403,14 @@ def get_function(target_func, big=False) \
 
     f.__name__ = target_func
     return f, X_LIM, min_loc, min_val
+
+
+def get_dim_from_name(target_func):
+    if len(target_func.split("-")) > 1:
+        dim = int(target_func.split("-")[1][:-1])
+    else:
+        dim = None
+    return dim
 
 
 def plot_test_func(target_func, *args):
