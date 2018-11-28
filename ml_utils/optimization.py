@@ -100,8 +100,10 @@ def minimize_with_restarts(optimiser_func, restart_bounds, num_restarts=5,
 
 
 def sample_then_minimize(
-        optimiser_func: Callable, sampling_bounds: np.ndarray,
-        num_samples: Optional[int] = 1000, num_local: Optional[int] = 5,
+        optimiser_func: Callable,
+        bounds: np.ndarray,
+        num_samples: Optional[int] = 1000,
+        num_local: Optional[int] = 5,
         jac: Optional[Callable] = None,
         minimize_options: Optional[Dict] = None,
         evaluate_sequentially: Optional[bool] = True,
@@ -113,7 +115,7 @@ def sample_then_minimize(
     optimiser_func
         Function to be minimized. Inputs are expected to be 2D.
 
-    sampling_bounds
+    bounds
         Bounds for sampling and optimization
 
     num_samples
@@ -141,9 +143,9 @@ def sample_then_minimize(
     -------
     scipy OptimizeResult of the best local optimization
     """
-    x_samples = np.random.uniform(sampling_bounds[:, 0],
-                                  sampling_bounds[:, 1],
-                                  (num_samples, sampling_bounds.shape[0]))
+    x_samples = np.random.uniform(bounds[:, 0],
+                                  bounds[:, 1],
+                                  (num_samples, bounds.shape[0]))
     if evaluate_sequentially:
         if verbose:
             print(f"Evaluating {num_samples} locations sequentially")
@@ -169,6 +171,7 @@ def sample_then_minimize(
         x0 = np.atleast_2d(x_locals[ii])
         res = sp.optimize.minimize(
             optimiser_func, x0, jac=jac,
+            bounds=bounds,
             options=minimize_options)  # type: optimize.OptimizeResult
 
         if res.fun < best_f:

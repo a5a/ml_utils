@@ -116,6 +116,21 @@ def test_ard():
     surrogate.optimize()
 
 
+def test_priors():
+    theta = np.linspace(0, 10, 500)
+
+    # param = 'variance'
+    # hyper_prior = GPy.priors.Gamma(a=1.0, b=0.001)
+
+    # # lengthscale prior keeps it small-ish
+    param = 'lengthscale'
+    hyper_prior = GPy.priors.Gamma(a=1.0, b=0.5)
+
+    prior_vals = hyper_prior.pdf(theta)
+    plt.plot(theta, prior_vals)
+    plt.title(param)
+    plt.ylim([0, 1.1*np.nanmax(prior_vals)])
+    plt.show()
 
 
 
@@ -123,4 +138,5 @@ if __name__ == '__main__':
     # test_predictive_gradients()
     # test_optimization_doesnt_crash()
     # test_dmu_dx()
-    test_ard()
+    # test_ard()
+    test_priors()
