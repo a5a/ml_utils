@@ -63,6 +63,34 @@ def draw_from_a_gp(dim, x_lim, n=None, kern=None, seed=None):
     return pred_func
 
 
+def egg(x):
+    """Eggholder function
+
+    2D function https://www.sfu.ca/~ssurjano/egg.html
+
+    True range is [-512, 512] and true opt is at (512, 404.2319)
+
+    Scaled to [-1, 1], so minimum is now at (1, 0.78951543)
+
+    value at min = -9.596407
+
+    Parameters
+    ----------
+    x
+
+    Returns
+    -------
+
+    """
+    x = 512 * np.atleast_2d(x)
+    x0 = x[:, 0]
+    x1 = x[:, 1]
+    term1 = -(x1 + 47) * np.sin(np.sqrt(np.abs(x1 + x0 / 2 + 47)))
+    term2 = -x0 * np.sin(np.sqrt(np.abs(x0 - (x1 + 47))))
+    y = (term1 + term2) / 100
+    return y[:, None]
+
+
 def shekel(x: np.ndarray) -> np.ndarray:
     """Shekel
 
@@ -322,6 +350,12 @@ def get_function(target_func, big=False) \
         f = branin
         min_loc = np.array([0.08559, -0.6966])
         min_val = 0.0013
+        X_LIM = np.array([[-1, 1], [-1, 1]])
+
+    elif target_func.startswith('egg-2d'):
+        f = egg
+        min_loc = np.array([1, 0.78951543])
+        min_val = -9.596407
         X_LIM = np.array([[-1, 1], [-1, 1]])
 
     elif target_func.startswith('michalewicz'):
