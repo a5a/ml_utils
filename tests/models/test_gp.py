@@ -124,7 +124,7 @@ def test_priors():
 
     # # lengthscale prior keeps it small-ish
     param = 'lengthscale'
-    hyper_prior = GPy.priors.Gamma(a=1.0, b=0.5)
+    hyper_prior = GPy.priors.Gamma(a=1.0, b=1.0)
 
     prior_vals = hyper_prior.pdf(theta)
     plt.plot(theta, prior_vals)
