@@ -198,6 +198,13 @@ def ackley(x):
            np.exp(np.sum(ccx, 1) / n) + a + np.exp(1)
 
 
+def ackley_small(x):
+    """
+    Ackley function / 20
+    """
+    return ackley(x) / 20
+
+
 def branin(x):
     """
     Branin function -- x = Nx2
@@ -244,6 +251,13 @@ def camelback(x):
     return tmp1 + tmp2 + tmp3
 
 
+def camelback_small(x):
+    """
+    Camelback function / 5
+    """
+    return camelback(x) / 5
+
+
 def michalewicz(x):
     """
     Michalewicz Function
@@ -287,6 +301,13 @@ def rosenbrock(x):
     return (1 - x[:, 0]) ** 2 + 100 * (x[:, 1] - x[:, 0] ** 2) ** 2
 
 
+def rosenbrock_small(x):
+    """
+    Rosenbrock function / 50
+    """
+    return rosenbrock(x) / 50
+
+
 def levy(x):
     """
     Levy function
@@ -308,6 +329,7 @@ def levy(x):
            (w(x, -1) - 1) ** 2 * (1 + np.sin(2 * np.pi * w(x, -1) + 1) ** 2)
 
 
+
 def get_function(target_func, big=False) \
         -> Tuple[Callable, np.ndarray, np.ndarray, float]:
     """
@@ -318,15 +340,14 @@ def get_function(target_func, big=False) \
     min_val = None
 
     if target_func.startswith('camelback-2d'):
-        f_ = camelback
         min_loc = np.array([[0.0449, -0.7126], [-0.0449, 0.7126]])
 
         if not big:
-            f = lambda x: f_(x) / 5
-            min_val = -1.0316 / 5
+            f = camelback_small
         else:
-            f = f_
-            min_val = -1.0316
+            f = camelback
+
+        min_val = f(min_loc)
 
         X_LIM = np.array([[-1, 1], [-1, 1]])
 
@@ -380,29 +401,28 @@ def get_function(target_func, big=False) \
         X_LIM = np.vstack([[-1, 1]] * dim)
 
     elif target_func.startswith('ackley'):
-        f_ = ackley
-
         dim = get_dim_from_name(target_func)
         if dim is None:
             dim = 2
 
         min_loc = np.zeros(dim)
         if not big:
-            f = lambda x: f_(x) / 20
-            min_val = 0
+            f = ackley_small
         else:
-            f = f_
+            f = ackley
+
+        min_val = f(min_loc)
         X_LIM = np.vstack([np.array([-1., 1])] * dim)
 
     elif target_func.startswith('rosenbrock-2d'):
-        f_ = rosenbrock
+
         if not big:
-            f = lambda x: f_(x) / 50
+            f = rosenbrock_small
         else:
-            f = f_
+            f = rosenbrock
 
         min_loc = np.array([1., 1.])
-        min_val = 0
+        min_val = f(min_loc)
 
         X_LIM = np.array([[-1, 1], [-1, 1]])
 
