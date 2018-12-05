@@ -272,7 +272,7 @@ def michalewicz(x):
     x = (x + 1) * np.pi / 2  # transform from [0,pi] to [-1,1]
 
     n = x.shape[1]
-    m = 1
+    m = 10
     ii = np.arange(1, n + 1)
 
     return -np.sum(np.sin(x) * (np.sin(ii * x ** 2 / np.pi)) ** (2 * m), 1)
@@ -396,7 +396,14 @@ def get_function(target_func, big=False) \
         else:
             min_loc = None
 
-        min_val = -4.687
+        if dim == 2:
+            min_val = -1.8013
+        elif dim == 5:
+            min_val = -4.687
+        elif dim == 10:
+            min_val = -9.66015
+        else:
+            min_val = None
 
         X_LIM = np.vstack([[-1, 1]] * dim)
 
