@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 from ml_utils.models import GP
 import GPy
@@ -117,19 +119,23 @@ def test_ard():
 
 
 def test_priors():
-    theta = np.linspace(0, 10, 500)
+    theta = np.linspace(0, 5, 500)
 
     # param = 'variance'
     # hyper_prior = GPy.priors.Gamma(a=1.0, b=0.001)
 
     # # lengthscale prior keeps it small-ish
     param = 'lengthscale'
-    hyper_prior = GPy.priors.Gamma(a=1.0, b=1.0)
+    a = 1.0
+    b = 0.5
+    hyper_prior = GPy.priors.Gamma(a=a, b=b)
+    # hyper_prior = GPy.priors.Gamma.from_EV(E=a, V=b)
 
     prior_vals = hyper_prior.pdf(theta)
     plt.plot(theta, prior_vals)
-    plt.title(param)
+    plt.title(f"{a} {b}")
     plt.ylim([0, 1.1*np.nanmax(prior_vals)])
+    plt.savefig(os.path.expanduser(f"~/Desktop/prior-{a}-{b}.png"))
     plt.show()
 
 

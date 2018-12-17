@@ -54,8 +54,6 @@ def estimate_lipschitz_around_x(x: np.ndarray, surrogate, bounds) -> float:
 
     Parameters
     ----------
-    bounds
-    surrogate
     x
 
     Returns
@@ -66,10 +64,8 @@ def estimate_lipschitz_around_x(x: np.ndarray, surrogate, bounds) -> float:
     theta = surrogate.kern.lengthscale
     lower_sp = np.maximum(bounds[:, 0], x - theta)
     upper_sp = np.minimum(bounds[:, 1], x + theta)
-
     lower_sp = lower_sp.reshape(-1, 1)
     upper_sp = upper_sp.reshape(-1, 1)
-
     lipschitz_search_space = np.hstack((lower_sp, upper_sp))
     L = estimate_lipschitz_constant(surrogate,
                                     lipschitz_search_space)
