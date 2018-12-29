@@ -4,8 +4,10 @@ import multiprocessing as mp
 import signal
 import time
 from contextlib import contextmanager
+from typing import Union
 
 import numpy as np
+import pandas as pd
 
 
 def timed_print(*args):
@@ -72,3 +74,20 @@ def time_limit(seconds):
         yield
     finally:
         signal.alarm(0)
+
+
+def time_limited_df_to_pickle(df: pd.DataFrame, fname: str, t: Union[int, float]):
+    """
+    Trying twice to save the data frame within the time limit, then giving up.
+
+    """
+    try:
+        with time_limit(t):
+            df.to_pickle(fname)
+    except TimeoutException:
+        try:
+            with time_limit(t):
+                df.to_pickle(fname)
+        except TimeoutException:
+            print(f"Problem saving data:\n"
+                  f"File {fname} couldn't be saved in the allocated time!")
