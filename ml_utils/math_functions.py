@@ -329,6 +329,27 @@ def levy(x):
            (w(x, -1) - 1) ** 2 * (1 + np.sin(2 * np.pi * w(x, -1) + 1) ** 2)
 
 
+def gsobol(x, alpha=None):
+    """
+    (scaled) gSobol function
+
+    y-values are scaled as dimensions increase, so that it doesn't blow up
+
+    ref:
+    González, Javier, et al. "Batch bayesian optimization via local
+    penalization." Artificial Intelligence and Statistics. 2016.
+    """
+    x = 5*np.atleast_2d(x)
+
+    if alpha is None:
+        alpha = np.ones(x.shape[1])
+
+    out = np.prod((np.abs(4 * x - 2) + alpha[0]) / (1 + alpha), 1)
+
+    # Scaling the output otherwise it blows up with increasing dimensions
+    out = out / np.power(8, len(alpha))
+    return out
+
 
 def get_function(target_func, big=False) \
         -> Tuple[Callable, np.ndarray, np.ndarray, float]:
@@ -457,6 +478,14 @@ def get_function(target_func, big=False) \
         min_val = 10.2809
         X_LIM = np.array([[-1, 1], [-1, 1]])
 
+    elif target_func.startswith('gsobol'):
+        dim = get_dim_from_name(target_func)
+        if dim is None:
+            dim = 1
+        f = gsobol
+        min_loc = np.array([0.1]*dim)
+        min_val = f(min_loc)
+        X_LIM = np.vstack([np.array([-1., 1])] * dim)
 
     else:
         print("target_func with name", target_func, "doesn't exist!")
