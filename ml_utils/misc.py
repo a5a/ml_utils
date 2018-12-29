@@ -1,7 +1,9 @@
 """Misc utilities"""
 
 import multiprocessing as mp
+import signal
 import time
+from contextlib import contextmanager
 
 import numpy as np
 
@@ -37,3 +39,36 @@ def print_experiment_times(durations, total):
         print("Estimated time left = %02d:%02d:%02d" % (h_t, m_t, s_t))
     else:
         print("Estimated time left = %02d:%02d" % (m_t, s_t))
+
+
+class TimeoutException(Exception): pass
+
+
+@contextmanager
+def time_limit(seconds):
+    """
+    Contextmanager to run a function call for a limited time:
+
+    Example use:
+
+        try:
+            with time_limit(10):
+                long_function_call()
+        except TimeoutException as e:
+            print("Timed out!")
+
+
+    https://stackoverflow.com/questions/366682/
+        how-to-limit-execution-time-of-a-function-call-in-python
+
+    """
+
+    def signal_handler(signum, frame):
+        raise TimeoutException("Timed out!")
+
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
