@@ -97,7 +97,7 @@ def unnormalise_x_given_lims(x_in, lims):
     Scales the input x (assumed to be between [-1, 1] for each dim)
     to the lims of the problem
     """
-    assert len(x_in) == len(lims)
+    # assert len(x_in) == len(lims)
 
     r = lims[:, 1] - lims[:, 0]
     x_orig = r * (x_in + 1) / 2 + lims[:, 0]
