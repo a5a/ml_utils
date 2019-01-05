@@ -91,3 +91,15 @@ def time_limited_df_to_pickle(df: pd.DataFrame, fname: str, t: Union[int, float]
         except TimeoutException:
             print(f"Problem saving data:\n"
                   f"File {fname} couldn't be saved in the allocated time!")
+
+def unnormalise_x_given_lims(x_in, lims):
+    """
+    Scales the input x (assumed to be between [-1, 1] for each dim)
+    to the lims of the problem
+    """
+    assert len(x_in) == len(lims)
+
+    r = lims[:, 1] - lims[:, 0]
+    x_orig = r * (x_in + 1) / 2 + lims[:, 0]
+
+    return x_orig
