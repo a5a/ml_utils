@@ -12,7 +12,7 @@ import numpy as np
 import GPy
 
 
-def draw_from_a_gp(dim, x_lim, n=None, kern=None, seed=None):
+def draw_from_a_gp(dim, x_lim, n=None, kern: GPy.kern = None, seed=None):
     """
     A draw from a known GP kernel
 
@@ -29,7 +29,9 @@ def draw_from_a_gp(dim, x_lim, n=None, kern=None, seed=None):
     :f (func): Function object that provides the function value at a given x
     """
     assert dim == x_lim.shape[0]
-    np.random.seed(seed)
+
+    if seed is not None:
+        np.random.seed(seed)
 
     if n is None:
         n = 300
@@ -339,7 +341,7 @@ def gsobol(x, alpha=None):
     González, Javier, et al. "Batch bayesian optimization via local
     penalization." Artificial Intelligence and Statistics. 2016.
     """
-    x = 5*np.atleast_2d(x)
+    x = 5 * np.atleast_2d(x)
 
     if alpha is None:
         alpha = np.ones(x.shape[1])
@@ -371,6 +373,18 @@ def get_function(target_func, big=False) \
         min_val = f(min_loc)
 
         X_LIM = np.array([[-1, 1], [-1, 1]])
+
+    elif target_func.startswith('matern'):
+        dim = get_dim_from_name(target_func)
+        if dim is None:
+            dim = 1
+        kern = GPy.kern.Matern52(dim, variance=1.0,
+                                 lengthscale=0.3 * np.ones(dim),
+                                 ARD=True) # type: GPy.kern
+        X_LIM = np.vstack([[-1, 1]] * dim)
+        f = draw_from_a_gp(dim, X_LIM, n=800, kern=kern)
+        min_loc = None
+        min_val = None
 
     elif target_func.startswith('twosines'):
         dim = get_dim_from_name(target_func)
@@ -483,7 +497,7 @@ def get_function(target_func, big=False) \
         if dim is None:
             dim = 1
         f = gsobol
-        min_loc = np.array([0.1]*dim)
+        min_loc = np.array([0.1] * dim)
         min_val = f(min_loc)
         X_LIM = np.vstack([np.array([-1., 1])] * dim)
 

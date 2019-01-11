@@ -1,4 +1,4 @@
-from ml_utils.math_functions import get_function, gsobol
+from ml_utils.math_functions import get_function, gsobol, plot_test_func
 from ml_utils.optimization import minimize_with_restarts
 import numpy as np
 import pylab as plt
@@ -28,8 +28,16 @@ def test_gsobol():
     plt.plot(x.flatten(), y.flatten())
     plt.show()
 
+def test_matern():
+    # plot_test_func('matern-2d')
+    # plt.show()
+    f, X_LIM, min_loc, min_val = get_function('matern-2d')
+    print(f(np.array([0., 0.])))
+    pass
+
 
 if __name__ == '__main__':
     # test_x_lim_dims()
-    test_get_function()
-    test_gsobol()
+    # test_get_function()
+    # test_gsobol()
+    test_matern()
