@@ -807,7 +807,7 @@ class GP(object):
         return mean_jac, var_jac
 
     # @classmethod
-    def plot(self, model=None, n: int = None, eps: float = None,
+    def plot(self, model=None, n: int = None, x=None, eps: float = None,
              cmap: matplotlib.colors.Colormap = 'YlOrRd',
              title: str = None, ylim: np.ndarray = None,
              return_fig_handle: bool = False) \
@@ -826,6 +826,9 @@ class GP(object):
         n
             number of points to evaluate for the plot. Default 1D = 200,
             2D = 75 in each direction
+
+        x
+            vector of x locations to plot (only works on 1D for now)
 
         eps
             how much to extend over the limits of the training data. Default
@@ -857,9 +860,12 @@ class GP(object):
             # resolution
             if n is None:
                 n = 200
-            x_plot = np.linspace(min(self.X) - eps * x_range,
-                                 max(self.X) + eps * x_range,
-                                 n)
+            if x is None:
+                x_plot = np.linspace(min(self.X) - eps * x_range,
+                                     max(self.X) + eps * x_range,
+                                     n)
+            else:
+                x_plot = x.flatten()
             mu, var = self.predict(x_plot[:, None])
             mu, var = mu.flatten(), var.flatten()
             if return_fig_handle:
