@@ -159,7 +159,7 @@ def sample_then_minimize(
 
         f_samples = optimiser_func(x_samples)
 
-    best_indexes = f_samples.argsort()[-num_local:][::-1]
+    best_indexes = f_samples.argsort()[::-1][-num_local:]
     x_locals = x_samples[best_indexes]
 
     if verbose:
