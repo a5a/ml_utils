@@ -159,30 +159,37 @@ def sample_then_minimize(
 
         f_samples = optimiser_func(x_samples)
 
-    best_indexes = f_samples.argsort()[::-1][-num_local:]
-    x_locals = x_samples[best_indexes]
+    if num_local > 0:
+        best_indexes = f_samples.argsort()[::-1][-num_local:]
+        x_locals = x_samples[best_indexes]
 
-    if verbose:
-        print(f"Locally optimizing the top {num_local} locations")
+        if verbose:
+            print(f"Locally optimizing the top {num_local} locations")
 
-    best_result = None
-    best_f = np.inf
-    for ii in range(num_local):
-        x0 = np.atleast_2d(x_locals[ii])
-        res = sp.optimize.minimize(
-            optimiser_func, x0, jac=jac,
-            bounds=bounds,
-            options=minimize_options)  # type: optimize.OptimizeResult
+        best_result = None
+        best_f = np.inf
+        for ii in range(num_local):
+            x0 = np.atleast_2d(x_locals[ii])
+            res = sp.optimize.minimize(
+                optimiser_func, x0, jac=jac,
+                bounds=bounds,
+                options=minimize_options)  # type: optimize.OptimizeResult
 
-        if res.fun < best_f:
-            best_result = res
-            best_f = res.fun
+            if res.fun < best_f:
+                best_result = res
+                best_f = res.fun
+    else:
+        min_idx = np.argmin(f_samples)
+        best_result = optimize.OptimizeResult(
+            x=x_samples[min_idx],
+            fun=f_samples[min_idx])
 
     if verbose:
         print(f"Best result found: {best_result.x} "
               f"has function value {best_result.fun}")
 
     return best_result
+
 
 if __name__ == '__main__':
     def f(x):
