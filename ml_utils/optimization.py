@@ -182,7 +182,7 @@ def sample_then_minimize(
         min_idx = np.argmin(f_samples)
         best_result = optimize.OptimizeResult(
             x=x_samples[min_idx],
-            fun=f_samples[min_idx])
+            fun=f_samples[min_idx].item())
 
     if verbose:
         print(f"Best result found: {best_result.x} "
