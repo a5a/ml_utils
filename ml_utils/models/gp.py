@@ -863,7 +863,7 @@ class GP(object):
             if x is None:
                 x_plot = np.linspace(min(self.X) - eps * x_range,
                                      max(self.X) + eps * x_range,
-                                     n)
+                                     n).flatten()
             else:
                 x_plot = x.flatten()
             mu, var = self.predict(x_plot[:, None])
