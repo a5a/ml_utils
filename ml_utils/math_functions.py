@@ -11,6 +11,8 @@ from typing import Tuple, Callable
 import numpy as np
 import GPy
 
+from ml_utils.optimization import sample_then_minimize
+
 
 def draw_from_a_gp(dim, x_lim, n=None, kern: GPy.kern = None, seed=None):
     """
@@ -383,8 +385,11 @@ def get_function(target_func, big=False) \
                                  ARD=True) # type: GPy.kern
         X_LIM = np.vstack([[-1, 1]] * dim)
         f = draw_from_a_gp(dim, X_LIM, n=800, kern=kern)
-        min_loc = None
-        min_val = None
+
+        res = sample_then_minimize(f, X_LIM, num_samples=10000, num_local=1,
+                             evaluate_sequentially=False)
+
+        min_loc , min_val = res.x, res.fun.item()
 
     elif target_func.startswith('twosines'):
         dim = get_dim_from_name(target_func)
