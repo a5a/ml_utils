@@ -3,6 +3,7 @@ from pprint import pprint
 import GPy
 from typing import Optional, List, Union
 
+# from scipy.spatial.distance import pdist
 from ml_utils.models import GP
 import numpy as np
 
@@ -45,7 +46,93 @@ def create_additive_kernel(k1_class, k2_class,
     return k_combined
 
 
-class DeltaKernel(GPy.kern.Kern):
-    # TODO
-    pass
+# class KernelWithDelta():
+#     """
+#     Recursion depth errors....
+#     """
+#
+#     def __init__(self, kern, delta_dims):
+#         self.delta_dims = delta_dims
+#         self.kern = kern
+#
+#     def K(self, X, X0=None):
+#         # todo
+#         raise NotImplementedError
+#
+#     def __getattr__(self, name):
+#         """
+#         This redirects any methods that are not explicitly set
+#         to self.original_model.
+#
+#         This function is only called if the called attribute
+#         doesn't already exist.
+#
+#         If original_model.name is a method, then it will be run.
+#         Otherwise the element will just be accessed.
+#         """
+#         if self.verbose:
+#             print("Calling function '{}' of embedded model".format(name))
+#         if callable(getattr(self.kern, name)):
+#             try:
+#                 return getattr(self.kern, name)(*args, **kwargs)
+#             except NameError:  # no args provided
+#                 return getattr(self.kern, name)()
+#         else:
+#             return getattr(self.kern, name)
+#
+#
+# class RBFWithDelta(GPy.kern.RBF):
+#     def __init__(self, active_dims_k=None, active_dims_delta=None,
+#                  name='rbfdelta', **kwargs):
+#         self.delta_dims = active_dims_delta
+#         input_dim = len(active_dims_k)
+#         super().__init__(input_dim, active_dims=active_dims_k, name=name,
+#                          **kwargs)
+#
+#     def K(self, X, X2=None):
+#         if X2 is None:
+#             X2 = X.copy()
+#
+#         kernel_K = super().K(X, X2)
+#
+#         X_delta = X[:, self.delta_dims]
+#         X2_delta = X2[:, self.delta_dims]
+#
+#         distances = pdist(X, X2)
 
+
+class StationaryUniformCat():
+    """
+    Kernel that is a combination of a stationary kernel and a
+    categorical kernel. Each cat input has the same weight and is
+    the cat variables' contribution to K() is normalised to [0, 1]
+
+    TODO: Convert into GPy.kern.Kern class for optimisation purposes
+    TODO: Need access to parameters (variance, lengthscale)
+    TODO: Deal with gradients
+    """
+
+    def __init__(self, kernel: GPy.kern.src.stationary.Stationary, cat_dims):
+        self.cat_dims = cat_dims
+        self.kernel = kernel
+
+    def K(self, X, X2=None):
+        if X2 is None:
+            X2 = X
+
+        k_kernel = self.kernel.K(X, X2)
+
+        k_cat = self.K_cat(X, X2)
+        return k_kernel + k_cat
+
+    def K_cat(self, X, X2):
+        X_cat = X[:, self.cat_dims]
+        X2_cat = X2[:, self.cat_dims]
+
+        # Counting the number of categories that are the same using GPy's
+        # broadcasting approach
+        diff = X_cat[:, None] - X2_cat[None, :]
+        diff[np.where(np.abs(diff))] = 1  # nonzero location = different cat
+        diff1 = np.logical_not(diff)  # invert, to now count same cats
+        k_cat = self.kernel.variance * np.sum(diff1, -1)
+        return k_cat

@@ -4,7 +4,8 @@ import GPy
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ml_utils.models.additive_gp import create_additive_kernel, AdditiveGP
+from ml_utils.models.additive_gp import create_additive_kernel, AdditiveGP, \
+    KernelWithDelta, RBFWithDelta, StationaryUniformCat
 
 
 def test_creation():
@@ -79,13 +80,12 @@ def test_subspace_learning():
 
     plt.show()
 
-
     mu, var = gp.predict(X)
 
     # # ------ Plot figures -------- #
     figure, axes = plt.subplots(2, 1, figsize=(10, 10))
     sub1 = axes[0].contourf(x1, x2, y.reshape(50, 50))
-    axes[0].plot(x_ob[:, 0], x_ob[:, 1],'r ^')
+    axes[0].plot(x_ob[:, 0], x_ob[:, 1], 'r ^')
     axes[0].set_title('objective func')
 
     sub2 = axes[1].contourf(x1, x2, mu.reshape(50, 50))
@@ -94,7 +94,40 @@ def test_subspace_learning():
     plt.show()
 
 
+def test_kernel_with_delta():
+    k_continuous = GPy.kern.RBF(1, active_dims=[0])
+    k = KernelWithDelta(k_continuous, [1])
+    print(k.lengthscale)
+    # DOESN'T WORK :(
+
+
+def test_rbf_with_delta():
+    x = np.arange(10).reshape(-1, 1)
+    x = np.hstack((x, x))
+
+    k = RBFWithDelta([0], [1])
+    k = GPy.kern.RBF(1, active_dims=[0])
+    k.K(x)
+
+
+def test_stationary_with_cat():
+    np.random.seed(40)
+
+    x_cont = np.random.rand(4, 3)
+    x_cat = np.random.randint(0, 2, size=(4, 2))
+
+    x = np.hstack((x_cont, x_cat))
+    print(x_cat)
+    print(x)
+    k_rbf = GPy.kern.RBF(3, active_dims=[0, 1, 2])
+
+    k = StationaryUniformCat(kernel=k_rbf, cat_dims=[3, 4])
+    K_ = k.K(x, x[:-1, :])
+
 
 if __name__ == '__main__':
     # test_creation()
-    test_subspace_learning()
+    # test_subspace_learning()
+    # test_kernel_with_delta()
+    # test_rbf_with_delta()
+    test_stationary_with_cat()
