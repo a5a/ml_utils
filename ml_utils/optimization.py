@@ -107,6 +107,7 @@ def sample_then_minimize(
         jac: Optional[Callable] = None,
         minimize_options: Optional[Dict] = None,
         evaluate_sequentially: Optional[bool] = True,
+        extra_locs:Optional[np.ndarray] = None,
         verbose: Optional[bool] = False) -> optimize.OptimizeResult:
     """Samples from the func and then optimizes the most promising locations
 
@@ -137,6 +138,11 @@ def sample_then_minimize(
         be possible for an acquisition function. Default behaviour is to
         evaluate the optimiser_func sequentially.
 
+    extra_locs
+        Additional locations to consider for starting gradient descent opt
+        Useful for e.g. minimizing a surrogate, and adding the surrogate's X
+        as extra_locs
+
     verbose
 
     Returns
@@ -146,6 +152,11 @@ def sample_then_minimize(
     x_samples = np.random.uniform(bounds[:, 0],
                                   bounds[:, 1],
                                   (num_samples, bounds.shape[0]))
+    if extra_locs is not None:
+        assert extra_locs.ndim == x_samples.ndim
+        assert extra_locs.shape[-1] == x_samples.shape[-1]
+        x_samples = np.vstack((x_samples, extra_locs))
+
     if evaluate_sequentially:
         if verbose:
             print(f"Evaluating {num_samples} locations sequentially")
