@@ -16,7 +16,7 @@ class AdditiveGP(GP):
         kernel = self.kern.parameters[subspace_idx]
         mu = kernel.K(x, self.X) @ self.alpha
         var = kernel.K(x, x) - \
-              kernel.K(x, self.X) @ self.Ka_inv @ kernel.K(self.X, x)
+            kernel.K(x, self.X) @ self.Ka_inv @ kernel.K(self.X, x)
 
         if not full_cov:
             var = np.diag(var).reshape(mu.shape)
@@ -101,7 +101,7 @@ def create_additive_kernel(k1_class, k2_class,
 #         distances = pdist(X, X2)
 
 
-class StationaryUniformCat():
+class StationaryUniformCat(GPy.kern.Kern):
     """
     Kernel that is a combination of a stationary kernel and a
     categorical kernel. Each cat input has the same weight and is
@@ -112,9 +112,16 @@ class StationaryUniformCat():
     TODO: Deal with gradients
     """
 
-    def __init__(self, kernel: GPy.kern.src.stationary.Stationary, cat_dims):
+    def __init__(self, kernel:GPy.kern.RBF, cat_dims):
         self.cat_dims = cat_dims
         self.kernel = kernel
+
+        name = 'StationaryUniformCat'
+        input_dim = self.kernel.input_dim + len(self.cat_dims)
+        active_dim = np.arange(input_dim)
+        super().__init__(input_dim, active_dim, name)
+
+        self.link_parameters(self.kernel)
 
     def K(self, X, X2=None):
         if X2 is None:
@@ -124,6 +131,14 @@ class StationaryUniformCat():
 
         k_cat = self.K_cat(X, X2)
         return k_kernel + k_cat
+
+    def update_gradients_full(self, dL_dKdiag, X, X2=None):
+        # Kernel gradients
+        self.kernel.update_gradients_full(dL_dK, X, X2=X2)
+
+        # Update the variance gradient using the contribution of the categories
+        solo_grad = self.kernel.variance.gradient
+        raise NotImplementedError
 
     def K_cat(self, X, X2):
         X_cat = X[:, self.cat_dims]

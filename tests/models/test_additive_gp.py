@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from ml_utils.models.additive_gp import create_additive_kernel, AdditiveGP, \
-    KernelWithDelta, RBFWithDelta, StationaryUniformCat
+    StationaryUniformCat
 
 
 def test_creation():
@@ -122,6 +122,7 @@ def test_stationary_with_cat():
     k_rbf = GPy.kern.RBF(3, active_dims=[0, 1, 2])
 
     k = StationaryUniformCat(kernel=k_rbf, cat_dims=[3, 4])
+    print(k)
     K_ = k.K(x, x[:-1, :])
 
 
