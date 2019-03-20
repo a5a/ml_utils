@@ -4,6 +4,7 @@ import GPy
 import matplotlib.pyplot as plt
 import numpy as np
 
+from ml_utils.models.gp import GP
 from ml_utils.models.additive_gp import create_additive_kernel, AdditiveGP, \
     StationaryUniformCat
 
@@ -126,9 +127,29 @@ def test_stationary_with_cat():
     K_ = k.K(x, x[:-1, :])
 
 
+def test_mixed_kernel_gradients():
+    np.random.seed(40)
+
+    x_cont = np.random.rand(4, 3)
+    x_cat = np.random.randint(0, 2, size=(4, 2))
+
+    x = np.hstack((x_cont, x_cat))
+
+    y = np.sum(np.sin(x), 1).reshape(-1, 1)
+    # print(x_cat)
+    print(x)
+    k_rbf = GPy.kern.RBF(3, active_dims=[0, 1, 2])
+
+    k = StationaryUniformCat(kernel=k_rbf, cat_dims=[3, 4])
+
+    gp = GP(x, y, k)
+    gp.optimize()
+
+
 if __name__ == '__main__':
     # test_creation()
     # test_subspace_learning()
     # test_kernel_with_delta()
     # test_rbf_with_delta()
-    test_stationary_with_cat()
+    # test_stationary_with_cat()
+    test_mixed_kernel_gradients()

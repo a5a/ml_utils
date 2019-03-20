@@ -112,7 +112,7 @@ class StationaryUniformCat(GPy.kern.Kern):
     TODO: Deal with gradients
     """
 
-    def __init__(self, kernel:GPy.kern.RBF, cat_dims):
+    def __init__(self, kernel: GPy.kern.RBF, cat_dims):
         self.cat_dims = cat_dims
         self.kernel = kernel
 
@@ -132,14 +132,6 @@ class StationaryUniformCat(GPy.kern.Kern):
         k_cat = self.K_cat(X, X2)
         return k_kernel + k_cat
 
-    def update_gradients_full(self, dL_dKdiag, X, X2=None):
-        # Kernel gradients
-        self.kernel.update_gradients_full(dL_dK, X, X2=X2)
-
-        # Update the variance gradient using the contribution of the categories
-        solo_grad = self.kernel.variance.gradient
-        raise NotImplementedError
-
     def K_cat(self, X, X2):
         X_cat = X[:, self.cat_dims]
         X2_cat = X2[:, self.cat_dims]
@@ -147,7 +139,21 @@ class StationaryUniformCat(GPy.kern.Kern):
         # Counting the number of categories that are the same using GPy's
         # broadcasting approach
         diff = X_cat[:, None] - X2_cat[None, :]
-        diff[np.where(np.abs(diff))] = 1  # nonzero location = different cat
-        diff1 = np.logical_not(diff)  # invert, to now count same cats
-        k_cat = self.kernel.variance * np.sum(diff1, -1)
+        # nonzero location = different cat
+        diff[np.where(np.abs(diff))] = 1
+        # invert, to now count same cats
+        diff1 = np.logical_not(diff)
+        # dividing by number of cat variables to keep this term in range [0,1]
+        k_cat = self.kernel.variance * np.sum(diff1, -1) / len(self.cat_dims)
         return k_cat
+
+    def update_gradients_full(self, dL_dK, X, X2=None):
+        # Kernel gradients
+        self.kernel.update_gradients_full(dL_dK, X, X2=X2)
+
+        # Update the variance gradient using the contribution of the categories
+        stat_grad = self.kernel.variance.gradient
+        cat_kern_contrib = np.sum(self.K_cat(X, X2=X2)) / self.kernel.variance
+
+        self.kernel.variance.gradient = stat_grad + cat_kern_contrib
+        # print(self.gradient)
