@@ -95,20 +95,20 @@ def test_subspace_learning():
     plt.show()
 
 
-def test_kernel_with_delta():
-    k_continuous = GPy.kern.RBF(1, active_dims=[0])
-    k = KernelWithDelta(k_continuous, [1])
-    print(k.lengthscale)
-    # DOESN'T WORK :(
-
-
-def test_rbf_with_delta():
-    x = np.arange(10).reshape(-1, 1)
-    x = np.hstack((x, x))
-
-    k = RBFWithDelta([0], [1])
-    k = GPy.kern.RBF(1, active_dims=[0])
-    k.K(x)
+# def test_kernel_with_delta():
+#     k_continuous = GPy.kern.RBF(1, active_dims=[0])
+#     k = KernelWithDelta(k_continuous, [1])
+#     print(k.lengthscale)
+#     # DOESN'T WORK :(
+#
+#
+# def test_rbf_with_delta():
+#     x = np.arange(10).reshape(-1, 1)
+#     x = np.hstack((x, x))
+#
+#     k = RBFWithDelta([0], [1])
+#     k = GPy.kern.RBF(1, active_dims=[0])
+#     k.K(x)
 
 
 def test_stationary_with_cat():
@@ -128,22 +128,40 @@ def test_stationary_with_cat():
 
 
 def test_mixed_kernel_gradients():
-    np.random.seed(40)
+    np.random.seed(42)
+    n = 15
 
-    x_cont = np.random.rand(4, 3)
-    x_cat = np.random.randint(0, 2, size=(4, 2))
+    x_cont = np.sort(np.random.rand(n, 3), 0)
+    x_cat = np.random.randint(0, 4, size=(n, 2))
+    # x_cat = np.arange(2*n).reshape(n ,2)
 
     x = np.hstack((x_cont, x_cat))
-
-    y = np.sum(np.sin(x), 1).reshape(-1, 1)
-    # print(x_cat)
     print(x)
-    k_rbf = GPy.kern.RBF(3, active_dims=[0, 1, 2])
 
-    k = StationaryUniformCat(kernel=k_rbf, cat_dims=[3, 4])
+    y = 1/x.shape[1] * np.sum(np.sin(4*x), 1).reshape(-1, 1) + 0.01 * np.random.randn(len(x), 1)
+    y = (y - np.mean(y))/np.std(y)
+    # print(x_cat)
+    # print(x)
+    k_rbf = GPy.kern.RBF(3, active_dims=[0,1,2])
 
-    gp = GP(x, y, k)
+    k = StationaryUniformCat(kernel=k_rbf, cat_dims=[3,4])
+
+    hp_bounds = np.array([[1., 1.],  # kernel variance
+                          [1e-4, 3],  # lengthscale
+                          # [1e-6, 1e6],  # likelihood variance
+                          ])
+    gp_opt_params = {'method': 'multigrad',
+                     'num_restarts': 10,
+                     'restart_bounds': hp_bounds,
+                     # likelihood variance
+                     'hp_bounds': hp_bounds,
+                     'verbose': False}
+
+    gp = GP(x, y, k, opt_params=gp_opt_params, lik_variance=0.1,
+            lik_variance_fixed=True)
+    print(gp)
     gp.optimize()
+    print(gp)
 
 
 if __name__ == '__main__':

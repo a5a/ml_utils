@@ -1,5 +1,5 @@
 from pprint import pprint
-
+import pylab as plt
 import GPy
 from typing import Optional, List, Union
 
@@ -16,7 +16,7 @@ class AdditiveGP(GP):
         kernel = self.kern.parameters[subspace_idx]
         mu = kernel.K(x, self.X) @ self.alpha
         var = kernel.K(x, x) - \
-            kernel.K(x, self.X) @ self.Ka_inv @ kernel.K(self.X, x)
+              kernel.K(x, self.X) @ self.Ka_inv @ kernel.K(self.X, x)
 
         if not full_cov:
             var = np.diag(var).reshape(mu.shape)
@@ -107,8 +107,6 @@ class StationaryUniformCat(GPy.kern.Kern):
     categorical kernel. Each cat input has the same weight and is
     the cat variables' contribution to K() is normalised to [0, 1]
 
-    TODO: Convert into GPy.kern.Kern class for optimisation purposes
-    TODO: Need access to parameters (variance, lengthscale)
     TODO: Deal with gradients
     """
 
@@ -130,7 +128,17 @@ class StationaryUniformCat(GPy.kern.Kern):
         k_kernel = self.kernel.K(X, X2)
 
         k_cat = self.K_cat(X, X2)
-        return k_kernel + k_cat
+
+        k_t = k_kernel + k_cat
+        # f, (ax1, ax2, ax3) = plt.subplots(3, 1)
+        # plt.title(f"min_kernel = {np.min(k_kernel)}, max_kernel = {np.max(k_kernel)}, \n"
+        #             f"min_cat = {np.min(k_cat)}, max_cat = {np.max(k_cat)}")
+        # ax1.imshow(k_kernel)
+        # ax2.imshow(k_cat)
+        # ax3.imshow(k_kernel + k_cat)
+        # # f.colorbar()
+        # plt.show()
+        return k_t
 
     def K_cat(self, X, X2):
         X_cat = X[:, self.cat_dims]
@@ -153,7 +161,9 @@ class StationaryUniformCat(GPy.kern.Kern):
 
         # Update the variance gradient using the contribution of the categories
         stat_grad = self.kernel.variance.gradient
-        cat_kern_contrib = np.sum(self.K_cat(X, X2=X2)) / self.kernel.variance
+        cat_kern_contrib = np.sum(self.K_cat(X, X2=X2) * dL_dK) / self.kernel.variance
 
+        # ASA: Add this in again...
         self.kernel.variance.gradient = stat_grad + cat_kern_contrib
-        # print(self.gradient)
+
+        print(f"Updating gradient: {np.hstack((self.gradient, cat_kern_contrib))}")
