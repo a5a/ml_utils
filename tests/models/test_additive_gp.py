@@ -4,6 +4,7 @@ import GPy
 import matplotlib.pyplot as plt
 import numpy as np
 
+from bayesopt.acquisition import EI
 from ml_utils.models.gp import GP
 from ml_utils.models.additive_gp import create_additive_kernel, AdditiveGP, \
     StationaryUniformCat
@@ -138,13 +139,15 @@ def test_mixed_kernel_gradients():
     x = np.hstack((x_cont, x_cat))
     print(x)
 
-    y = 1/x.shape[1] * np.sum(np.sin(4*x), 1).reshape(-1, 1) + 0.01 * np.random.randn(len(x), 1)
-    y = (y - np.mean(y))/np.std(y)
+    y = 1 / x.shape[1] * np.sum(np.sin(4 * x), 1).reshape(-1,
+                                                          1) + 0.01 * np.random.randn(
+        len(x), 1)
+    y = (y - np.mean(y)) / np.std(y)
     # print(x_cat)
     # print(x)
-    k_rbf = GPy.kern.RBF(3, active_dims=[0,1,2])
+    k_rbf = GPy.kern.RBF(3, active_dims=[0, 1, 2])
 
-    k = StationaryUniformCat(kernel=k_rbf, cat_dims=[3,4])
+    k = StationaryUniformCat(kernel=k_rbf, cat_dims=[3, 4])
 
     hp_bounds = np.array([[1., 1.],  # kernel variance
                           [1e-4, 3],  # lengthscale
@@ -164,10 +167,102 @@ def test_mixed_kernel_gradients():
     print(gp)
 
 
+def test_cont_cat_inputs():
+    from testFunctions.syntheticFunctions import func1C, func2C, func1C1D
+
+    np.random.seed(41)
+
+    n = 100
+    n_test = 500
+
+    x_cont = np.sort(np.random.rand(n, 1) * 2 - 1, 0)
+    x_cat = np.random.randint(0, 3, n).reshape(-1, 1)
+
+
+    # x_cont = np.vstack((np.linspace(-1, 1, n).reshape(-1, 1),
+    #                     np.linspace(-1, 1, n).reshape(-1, 1)))
+    # x_cat = np.vstack((np.zeros((n, 1)), np.ones((n, 1))))
+
+    x = np.hstack((x_cont, x_cat))
+
+    x_cont_test = np.linspace(-1, 1, n_test).reshape(-1, 1)
+    # x_cat_test = 0 * np.ones((n_test, 1))
+    # x_cat_test = 1 * np.ones((n_test, 1))
+    x_cat_test = 2 * np.ones((n_test, 1))
+    # x_cat_test = np.arange(n_test).reshape(-1, 1)
+
+    # x_test = np.hstack((x_cont_test, x_cat_test))
+    x_test = np.hstack((x_cont_test, x_cat_test))
+    # x_test = x
+    y = np.zeros((len(x), 1))
+
+    f = func1C1D
+
+    for ii in range(len(x)):
+        y[ii] = -f(x_cat[ii], x_cont[ii]) + 0.1* np.random.rand()
+
+    # y = (y - np.mean(y))/np.std(y)
+    # y_sum = y[:n] + y[n:]
+
+    # plt.plot(x_cont, y, '*')
+    # plt.show()
+
+    k_rbf = GPy.kern.RBF(1, active_dims=[0])
+    k = StationaryUniformCat(kernel=k_rbf, cat_dims=[1])
+
+    hp_bounds = np.array([[1., 1.],  # kernel variance
+                          [1e-4, 3],  # lengthscale
+                          [1e-6, 100],  # likelihood variance
+                          ])
+    gp_opt_params = {'method': 'multigrad',
+                     'num_restarts': 10,
+                     'restart_bounds': hp_bounds,
+                     # likelihood variance
+                     'hp_bounds': hp_bounds,
+                     'verbose': False}
+
+    gp = GP(x, y, k, opt_params=gp_opt_params,
+            # lik_variance=1, lik_variance_fixed=True,
+            y_norm='meanstd')
+    gp.optimize()
+
+    mu, var = gp.predict(x_test)
+    print(gp)
+
+
+    min0 = np.min(gp.Y_raw[np.where(gp.X[:,-1] == 0)])
+    min1 = np.min(gp.Y_raw[np.where(gp.X[:,-1] == 1)])
+    min2 = np.min(gp.Y_raw[np.where(gp.X[:,-1] == 2)])
+
+    acq_0 = EI(gp, min0)
+    acq_1 = EI(gp, min1)
+    acq_2 = EI(gp, min2)
+    acq_random = EI(gp, np.min(gp.Y_raw))
+
+    acq_0_vals = acq_0.evaluate(np.hstack((x_cont_test, 0*np.ones((n_test, 1)))))
+    acq_1_vals = acq_1.evaluate(np.hstack((x_cont_test, 1*np.ones((n_test, 1)))))
+    acq_2_vals = acq_2.evaluate(np.hstack((x_cont_test, 2*np.ones((n_test, 1)))))
+    acq_random = acq_random.evaluate(np.hstack((x_cont_test, np.arange(n_test).reshape(-1, 1))))
+
+    f, (ax1, ax2)= plt.subplots(2, 1)
+    ax1.plot(x_cont_test, mu.flatten(), 'r*')
+    ax1.plot(x_cont, y, '*')
+    # plt.plot(x_cont[:n], y_sum, 'g*')
+
+    ax2.plot(x_cont_test, acq_0_vals, label='acq0')
+    ax2.plot(x_cont_test, acq_1_vals, label='acq1')
+    ax2.plot(x_cont_test, acq_2_vals, label='acq2')
+    ax2.plot(x_cont_test, acq_random, label='acq_r')
+
+    plt.legend()
+    plt.show()
+
+
 if __name__ == '__main__':
     # test_creation()
     # test_subspace_learning()
     # test_kernel_with_delta()
     # test_rbf_with_delta()
     # test_stationary_with_cat()
-    test_mixed_kernel_gradients()
+    # test_mixed_kernel_gradients()
+    test_cont_cat_inputs()
