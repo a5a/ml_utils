@@ -88,8 +88,8 @@ class GP(object):
                  hyper_priors: Optional[List] = None,
                  kernel_params_fixed: Optional[bool] = False,
                  opt_params: Optional[dict] = None,
-                 remove_y_mean: Optional[bool] = True,
-                 y_norm:Optional[str] = 'mean',
+                 remove_y_mean: Optional[bool] = False,
+                 y_norm: Optional[str] = 'mean',
                  stabilise_mat_inv: Optional[bool] = True,
                  auto_update: Optional[bool] = True,
                  verbose: Optional[Union[bool, int]] = False) -> None:
@@ -102,7 +102,7 @@ class GP(object):
         self.auto_update = auto_update
 
         self.verbose = verbose
-        if remove_y_mean is not None:
+        if remove_y_mean:
             self.y_norm = 'mean'
             print("Stop using remove_y_mean!")
         else:
@@ -302,7 +302,7 @@ class GP(object):
             if self.verbose > 1:
                 print("set_data(): removing mean of Y from data")
         elif self.y_norm == 'meanstd':
-            self.Y = (self.Y_raw - self.y_mean)/self.y_std
+            self.Y = (self.Y_raw - self.y_mean) / self.y_std
 
         else:
             self.Y = self.Y_raw
@@ -654,19 +654,19 @@ class GP(object):
         k_star_star = self.kern.K(x_star, x_star)
 
         mu = k_star.dot(self.alpha)
-        # If the y data has been transformed to zero-mean,
-        # then undo that here
-        if self.y_norm == 'mean':
-            mu += self.y_mean
-        else:
-            if self.verbose:
-                print("Not unnormalising for y_norm = 'meanstd'")
 
         var = k_star_star - k_star.dot(self.Ka_inv.dot(k_star.T))
         # Need to copy, else np.diag returns read-only array
         if not full_cov:
             var = np.diag(var).copy().reshape(mu.shape)
 
+        # If the y data has been transformed to zero-mean,
+        # then undo that here
+        if self.y_norm == 'mean':
+            mu += self.y_mean
+        elif self.y_norm == 'meanstd':
+            mu = mu * self.y_std + self.y_mean
+            var = var * self.y_std ** 2
         return mu, var
 
     def compute_Ka(self, X: np.ndarray = None,
