@@ -89,6 +89,7 @@ class GP(object):
                  kernel_params_fixed: Optional[bool] = False,
                  opt_params: Optional[dict] = None,
                  remove_y_mean: Optional[bool] = True,
+                 y_norm:Optional[str] = 'mean',
                  stabilise_mat_inv: Optional[bool] = True,
                  auto_update: Optional[bool] = True,
                  verbose: Optional[Union[bool, int]] = False) -> None:
@@ -101,7 +102,11 @@ class GP(object):
         self.auto_update = auto_update
 
         self.verbose = verbose
-        self.remove_y_mean = remove_y_mean
+        if remove_y_mean is not None:
+            self.y_norm = 'mean'
+            print("Stop using remove_y_mean!")
+        else:
+            self.y_norm = y_norm  # 'mean', 'meanstd'
 
         self.stabilise_mat_inv = bool(stabilise_mat_inv)
 
@@ -153,6 +158,7 @@ class GP(object):
         self.Y = None
         self.Y_raw = None
         self.y_mean = None
+        self.y_std = None
         self.output_dim = None
 
         self.set_data(X, Y, update=False)
@@ -290,10 +296,14 @@ class GP(object):
         self.X, self.Y_raw = X.copy().astype(float), Y.copy().astype(float)
 
         self.y_mean = np.mean(Y)
-        if self.remove_y_mean:
+        self.y_std = np.std(Y)
+        if self.y_norm == 'mean':
             self.Y = self.Y_raw - self.y_mean
             if self.verbose > 1:
                 print("set_data(): removing mean of Y from data")
+        elif self.y_norm == 'meanstd':
+            self.Y = (self.Y_raw - self.y_mean)/self.y_std
+
         else:
             self.Y = self.Y_raw
 
@@ -646,8 +656,11 @@ class GP(object):
         mu = k_star.dot(self.alpha)
         # If the y data has been transformed to zero-mean,
         # then undo that here
-        if self.remove_y_mean:
+        if self.y_norm == 'mean':
             mu += self.y_mean
+        else:
+            if self.verbose:
+                print("Not unnormalising for y_norm = 'meanstd'")
 
         var = k_star_star - k_star.dot(self.Ka_inv.dot(k_star.T))
         # Need to copy, else np.diag returns read-only array
@@ -784,6 +797,7 @@ class GP(object):
         -------
         (dmu_dx, dvar_dx) at x_star
         """
+        # TODO: check normalising y here...
         kern = self.kern
         woodbury_vector = self.alpha
         woodbury_inv = self.Ka_inv
