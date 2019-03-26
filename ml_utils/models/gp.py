@@ -594,7 +594,7 @@ class GP(object):
         # return res
 
     def predict(self, x_star: np.ndarray, y_star: np.ndarray = None,
-                full_cov: bool = False) -> Tuple:
+                full_cov: bool = False, **kwargs) -> Tuple:
         """Prediction of mean and variance.
 
         If y_star is given, then the log probabilities of the posterior are
@@ -620,7 +620,7 @@ class GP(object):
         -------
         (predicted mean, predicted var (, log likelihood))
         """
-        mu, var = self.predict_latent(x_star, full_cov=full_cov)
+        mu, var = self.predict_latent(x_star, full_cov=full_cov, **kwargs)
         # add observation noise
         var += self._lik_variance
 
@@ -631,7 +631,7 @@ class GP(object):
         return mu, var
 
     def predict_latent(self, x_star: np.ndarray,
-                       full_cov: bool = False) -> \
+                       full_cov: bool = False, kern=None) -> \
             Tuple[np.ndarray, np.ndarray]:
         """latent function prediction
 
@@ -643,6 +643,10 @@ class GP(object):
         full_cov
             whether we want the full covariance
 
+        kern
+            Optional if we want to predict with a different kernel
+            (e.g. for looking at subspaces of a combination kernel)
+
         Returns
         -------
         (predicted mean, predicted var (, log likelihood))
@@ -650,8 +654,11 @@ class GP(object):
         """
         assert x_star.ndim == 2
 
-        k_star = self.kern.K(x_star, self.X)
-        k_star_star = self.kern.K(x_star, x_star)
+        if kern is None:
+            kern = self.kern
+
+        k_star = kern.K(x_star, self.X)
+        k_star_star = kern.K(x_star, x_star)
 
         mu = k_star.dot(self.alpha)
 

@@ -258,6 +258,40 @@ def test_cont_cat_inputs():
     plt.show()
 
 
+def test_subspace_pred():
+    n = 100
+
+    x = np.random.rand(n, 2)
+    x = np.hstack((x, np.random.randint(0, 2, (n, 2))))
+    y = np.sum(np.sin(x[:, :2]), 1).reshape(-1, 1)
+    y -= np.mean(y)
+
+    k_rbf = GPy.kern.RBF(2, active_dims=[0, 1])
+    k = StationaryUniformCat(kernel=k_rbf, cat_dims=[2, 3])
+
+    hp_bounds = np.array([[1., 1.],  # kernel variance
+                          [1e-4, 3],  # lengthscale
+                          [1e-6, 100],  # likelihood variance
+                          ])
+    gp_opt_params = {'method': 'multigrad',
+                     'num_restarts': 10,
+                     'restart_bounds': hp_bounds,
+                     # likelihood variance
+                     'hp_bounds': hp_bounds,
+                     'verbose': False}
+
+    gp = AdditiveGP(x, y, k, opt_params=gp_opt_params,
+                    # lik_variance=1, lik_variance_fixed=True,
+                    y_norm='meanstd')
+    gp.optimize()
+
+    mu1, var1 = gp.predict_latent_continuous(x)
+    mu2, var2 = gp.predict_latent(x, kern=gp.kern.kernel)
+
+    print(np.allclose(mu1, mu2))
+    print(np.allclose(var1, var2))
+
+
 if __name__ == '__main__':
     # test_creation()
     # test_subspace_learning()
@@ -266,3 +300,4 @@ if __name__ == '__main__':
     # test_stationary_with_cat()
     # test_mixed_kernel_gradients()
     test_cont_cat_inputs()
+    # test_subspace_pred()
