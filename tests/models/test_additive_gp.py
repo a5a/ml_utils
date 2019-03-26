@@ -143,45 +143,57 @@ def test_mixed_kernel_gradients():
 
 def test_cont_cat_inputs():
     from testFunctions.syntheticFunctions import func1C, func2C, func1C1D
-
+    from sklearn.preprocessing import OneHotEncoder
     np.random.seed(41)
 
-    n = 100
+    # magic numbers
+    n = 20
     n_test = 500
+    n_cat = 15
 
+    # training data X
     x_cont = np.sort(np.random.rand(n, 1) * 2 - 1, 0)
-    x_cat = np.random.randint(0, 3, n).reshape(-1, 1)
-
-    # x_cont = np.vstack((np.linspace(-1, 1, n).reshape(-1, 1),
-    #                     np.linspace(-1, 1, n).reshape(-1, 1)))
-    # x_cat = np.vstack((np.zeros((n, 1)), np.ones((n, 1))))
+    # x_cat = np.random.randint(0, n_cat, n).reshape(-1, 1)
+    x_cat = np.hstack([np.arange(n_cat)] * (int(n/n_cat)+1))[:n].reshape(-1 , 1)
+    enc = OneHotEncoder(handle_unknown='ignore', sparse=False)
+    enc.fit(x_cat)
+    x_cat_one_hot = enc.transform(x_cat)
 
     x = np.hstack((x_cont, x_cat))
+    x_one_hot = np.hstack((x_cont, x_cat_one_hot))
 
+    # test data X
     x_cont_test = np.linspace(-1, 1, n_test).reshape(-1, 1)
     # x_cat_test = 0 * np.ones((n_test, 1))
     # x_cat_test = 1 * np.ones((n_test, 1))
-    x_cat_test = 2 * np.ones((n_test, 1))
-    # x_cat_test = np.arange(n_test).reshape(-1, 1)
+    # x_cat_test = 2 * np.ones((n_test, 1))
+    # x_cat_test = np.arange(n_test).reshape(-1, 1) + 3
+
+    # x_cat_test = np.sort(np.random.randint(0, n_cat, n_test).reshape(-1, 1), 0)
+    x_cat_test = np.sort(np.hstack([np.arange(n_cat)] * (int(n_test/n_cat)+1))[:n_test].reshape(-1 , 1), 0)
+
+    x_cat_test_one_hot = enc.transform(x_cat_test)
 
     # x_test = np.hstack((x_cont_test, x_cat_test))
     x_test = np.hstack((x_cont_test, x_cat_test))
+    x_test_one_hot = np.hstack((x_cont_test, x_cat_test_one_hot))
     # x_test = x
+
+    # Function values
     y = np.zeros((len(x), 1))
-
     f = func1C1D
-
     for ii in range(len(x)):
         y[ii] = -f(x_cat[ii], x_cont[ii]) + 0.1 * np.random.rand()
 
-    # y = (y - np.mean(y))/np.std(y)
+    y = (y - np.mean(y))/np.std(y)
     # y_sum = y[:n] + y[n:]
 
     # plt.plot(x_cont, y, '*')
     # plt.show()
 
+    # Mixed kernel GP
     k_rbf = GPy.kern.RBF(1, active_dims=[0])
-    k = StationaryUniformCat(kernel=k_rbf, cat_dims=[1])
+    k1 = StationaryUniformCat(kernel=k_rbf, cat_dims=[1])
 
     hp_bounds = np.array([[1., 1.],  # kernel variance
                           [1e-4, 3],  # lengthscale
@@ -194,22 +206,61 @@ def test_cont_cat_inputs():
                      'hp_bounds': hp_bounds,
                      'verbose': False}
 
-    gp = GP(x, y, k, opt_params=gp_opt_params,
-            # lik_variance=1, lik_variance_fixed=True,
-            y_norm='meanstd')
-    gp.optimize()
+    gp1 = AdditiveGP(x, y, k1, opt_params=gp_opt_params,
+                    # lik_variance=1, lik_variance_fixed=True,
+                    y_norm='meanstd')
+    gp1.optimize()
 
-    mu, var = gp.predict(x_test)
-    print(gp)
+    # Single kernel GP
+    k2 = GPy.kern.RBF(4)
 
-    min0 = np.min(gp.Y_raw[np.where(gp.X[:, -1] == 0)])
-    min1 = np.min(gp.Y_raw[np.where(gp.X[:, -1] == 1)])
-    min2 = np.min(gp.Y_raw[np.where(gp.X[:, -1] == 2)])
+    hp_bounds = np.array([[1., 1.],  # kernel variance
+                          [1e-4, 3],  # lengthscale
+                          [1e-6, 100],  # likelihood variance
+                          ])
+    gp_opt_params = {'method': 'multigrad',
+                     'num_restarts': 10,
+                     'restart_bounds': hp_bounds,
+                     # likelihood variance
+                     'hp_bounds': hp_bounds,
+                     'verbose': False}
 
-    acq_0 = EI(gp, min0)
-    acq_1 = EI(gp, min1)
-    acq_2 = EI(gp, min2)
-    acq_random = EI(gp, np.min(gp.Y_raw))
+    gp2 = GP(x_one_hot, y, k2, opt_params=gp_opt_params,
+                    # lik_variance=1, lik_variance_fixed=True,
+                    y_norm='meanstd')
+    gp2.optimize()
+
+    # Check outputs
+    # mu, var = gp.predict_latent_continuous(x_test)
+    mu1, var1 = gp1.predict(x_test)
+    mu1, var1 = mu1.flatten(), var1.flatten()
+    print(gp1)
+
+    mu2, var2 = gp2.predict(x_test_one_hot)
+    mu2, var2 = mu2.flatten(), var2.flatten()
+    print(gp2)
+
+
+    idx_0 = np.where(gp1.X[:, -1] == 0)
+    idx_1 = np.where(gp1.X[:, -1] == 1)
+    idx_2 = np.where(gp1.X[:, -1] == 2)
+
+    # Acquisition funcs
+    min0 = np.min(gp1.Y_raw[idx_0])
+    min1 = np.min(gp1.Y_raw[idx_1])
+    f, (ax1, ax2) = plt.subplots(2, 1)
+    ax1.plot(x_cont_test, mu1, 'r')
+    ax1.fill_between(x_cont_test.flatten(), mu1 - 2 * np.sqrt(var1),
+                     mu1 + 2 * np.sqrt(var1), color='r', alpha=0.2)
+    ax1.plot(x_cont[idx_0], y[idx_0], 'g*', label='0')
+    ax1.plot(x_cont[idx_1], y[idx_1], 'b*', label='1')
+    ax1.plot(x_cont[idx_2], y[idx_2], 'm*', label='2')
+    min2 = np.min(gp1.Y_raw[idx_2])
+
+    acq_0 = EI(gp1, min0)
+    acq_1 = EI(gp1, min1)
+    acq_2 = EI(gp1, min2)
+    acq_random = EI(gp1, np.min(gp1.Y_raw))
 
     acq_0_vals = acq_0.evaluate(
         np.hstack((x_cont_test, 0 * np.ones((n_test, 1)))))
@@ -218,11 +269,15 @@ def test_cont_cat_inputs():
     acq_2_vals = acq_2.evaluate(
         np.hstack((x_cont_test, 2 * np.ones((n_test, 1)))))
     acq_random = acq_random.evaluate(
-        np.hstack((x_cont_test, 10+np.arange(n_test).reshape(-1, 1))))
+        np.hstack((x_cont_test, 10 + np.arange(n_test).reshape(-1, 1))))
 
     f, (ax1, ax2) = plt.subplots(2, 1)
-    ax1.plot(x_cont_test, mu.flatten(), 'r*')
-    ax1.plot(x_cont, y, '*')
+    ax1.plot(x_cont_test, mu1, 'r')
+    ax1.fill_between(x_cont_test.flatten(), mu1 - 2 * np.sqrt(var1),
+                     mu1 + 2 * np.sqrt(var1), color='r', alpha=0.2)
+    ax1.plot(x_cont[idx_0], y[idx_0], 'g*', label='0')
+    ax1.plot(x_cont[idx_1], y[idx_1], 'b*', label='1')
+    ax1.plot(x_cont[idx_2], y[idx_2], 'm*', label='2')
     # plt.plot(x_cont[:n], y_sum, 'g*')
 
     ax2.plot(x_cont_test, acq_0_vals, label='acq0')
@@ -233,6 +288,24 @@ def test_cont_cat_inputs():
     plt.legend()
     plt.show()
 
+    # Comparing one-hot to mixed-kernel GP
+
+    f, (ax1, ax2) = plt.subplots(2, 1)
+    ax1.plot(x_cont_test, mu1, 'r')
+    ax1.fill_between(x_cont_test.flatten(), mu1 - 2 * np.sqrt(var1),
+                     mu1 + 2 * np.sqrt(var1), color='r', alpha=0.2)
+    for ii in range(n_cat):
+        idx = np.where(gp1.X[:, -1] == ii)
+        ax1.plot(x_cont[idx], y[idx], '*', label=str(ii))
+
+    ax2.plot(x_cont_test, mu2, 'r')
+    ax2.fill_between(x_cont_test.flatten(), mu2 - 2 * np.sqrt(var2),
+                     mu2 + 2 * np.sqrt(var2), color='r', alpha=0.2)
+    for ii in range(n_cat):
+        idx = np.where(gp1.X[:, -1] == ii)
+        ax2.plot(x_cont[idx], y[idx], '*', label=str(ii))
+
+    plt.show()
 
 def test_subspace_pred():
     n = 100
