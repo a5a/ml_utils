@@ -9,7 +9,6 @@ from ml_utils.models.gp import GP
 from ml_utils.models.additive_gp import AdditiveGP, \
     StationaryUniformCat
 
-
 #
 #
 #
@@ -84,6 +83,7 @@ from ml_utils.models.additive_gp import AdditiveGP, \
 #     k = RBFWithDelta([0], [1])
 #     k = GPy.kern.RBF(1, active_dims=[0])
 #     k.K(x)
+from testFunctions.syntheticFunctions import sin_plus_linear, sin_plus_exp
 
 
 def test_stationary_with_cat():
@@ -154,7 +154,8 @@ def test_cont_cat_inputs():
     # training data X
     x_cont = np.sort(np.random.rand(n, 1) * 2 - 1, 0)
     # x_cat = np.random.randint(0, n_cat, n).reshape(-1, 1)
-    x_cat = np.hstack([np.arange(n_cat)] * (int(n/n_cat)+1))[:n].reshape(-1 , 1)
+    x_cat = np.hstack([np.arange(n_cat)] * (int(n / n_cat) + 1))[:n].reshape(
+        -1, 1)
     enc = OneHotEncoder(handle_unknown='ignore', sparse=False)
     enc.fit(x_cat)
     x_cat_one_hot = enc.transform(x_cat)
@@ -170,7 +171,9 @@ def test_cont_cat_inputs():
     # x_cat_test = np.arange(n_test).reshape(-1, 1) + 3
 
     # x_cat_test = np.sort(np.random.randint(0, n_cat, n_test).reshape(-1, 1), 0)
-    x_cat_test = np.sort(np.hstack([np.arange(n_cat)] * (int(n_test/n_cat)+1))[:n_test].reshape(-1 , 1), 0)
+    x_cat_test = np.sort(
+        np.hstack([np.arange(n_cat)] * (int(n_test / n_cat) + 1))[
+        :n_test].reshape(-1, 1), 0)
 
     x_cat_test_one_hot = enc.transform(x_cat_test)
 
@@ -185,7 +188,7 @@ def test_cont_cat_inputs():
     for ii in range(len(x)):
         y[ii] = -f(x_cat[ii], x_cont[ii]) + 0.1 * np.random.rand()
 
-    y = (y - np.mean(y))/np.std(y)
+    y = (y - np.mean(y)) / np.std(y)
     # y_sum = y[:n] + y[n:]
 
     # plt.plot(x_cont, y, '*')
@@ -207,8 +210,8 @@ def test_cont_cat_inputs():
                      'verbose': False}
 
     gp1 = AdditiveGP(x, y, k1, opt_params=gp_opt_params,
-                    # lik_variance=1, lik_variance_fixed=True,
-                    y_norm='meanstd')
+                     # lik_variance=1, lik_variance_fixed=True,
+                     y_norm='meanstd')
     gp1.optimize()
 
     # Single kernel GP
@@ -226,8 +229,8 @@ def test_cont_cat_inputs():
                      'verbose': False}
 
     gp2 = GP(x_one_hot, y, k2, opt_params=gp_opt_params,
-                    # lik_variance=1, lik_variance_fixed=True,
-                    y_norm='meanstd')
+             # lik_variance=1, lik_variance_fixed=True,
+             y_norm='meanstd')
     gp2.optimize()
 
     # Check outputs
@@ -239,7 +242,6 @@ def test_cont_cat_inputs():
     mu2, var2 = gp2.predict(x_test_one_hot)
     mu2, var2 = mu2.flatten(), var2.flatten()
     print(gp2)
-
 
     idx_0 = np.where(gp1.X[:, -1] == 0)
     idx_1 = np.where(gp1.X[:, -1] == 1)
@@ -307,6 +309,7 @@ def test_cont_cat_inputs():
 
     plt.show()
 
+
 def test_subspace_pred():
     n = 100
 
@@ -341,6 +344,107 @@ def test_subspace_pred():
     print(np.allclose(var1, var2))
 
 
+def test_cont_cat_inputs_sin_linear_func():
+    from sklearn.preprocessing import OneHotEncoder
+
+    # f = sin_plus_linear
+    f = sin_plus_exp
+
+    # TRAIN
+    n = 100
+    x_cont = 2 * np.random.rand(n)[:, None] - 1
+    x_cat = np.random.randint(0, 2, n)[:, None]
+    x = np.hstack((x_cat, x_cont))
+
+    enc = OneHotEncoder(handle_unknown='ignore', sparse=False)
+    enc.fit(x_cat)
+    x_cat_one_hot = enc.transform(x_cat)
+
+    x_one_hot = np.hstack((x_cat_one_hot, x_cont))
+
+    y = np.zeros(n)
+    for ii in range(n):
+        y[ii] = f(x_cat[ii], x_cont[ii])
+
+    y = y.reshape(-1, 1)
+    y += 0.1 * np.random.randn(*y.shape)
+
+    # TEST
+    n_test = 100
+    x_cont_test = np.sort(2 * np.random.rand(n_test)[:, None] - 1, 0)
+    x_cat_test = 1 * np.ones((n_test, 1))
+    x_test = np.hstack((x_cat_test, x_cont_test))
+
+    x_cat_one_hot_test = enc.transform(x_cat_test)
+
+    x_one_hot_test = np.hstack((x_cat_one_hot_test, x_cont_test))
+
+    y_test = np.zeros(n_test)
+    for ii in range(n_test):
+        y_test[ii] = f(x_cat_test[ii], x_cont_test[ii])
+
+    y_test = y_test.reshape(-1, 1)
+
+    # Mixed kernel GP
+    k_rbf = GPy.kern.RBF(1, active_dims=[0])
+    k1 = StationaryUniformCat(kernel=k_rbf, cat_dims=[1])
+
+    hp_bounds = np.array([[1., 1.],  # kernel variance
+                          [1e-4, 3],  # lengthscale
+                          [1e-6, 100],  # likelihood variance
+                          ])
+    gp_opt_params = {'method': 'multigrad',
+                     'num_restarts': 10,
+                     'restart_bounds': hp_bounds,
+                     # likelihood variance
+                     'hp_bounds': hp_bounds,
+                     'verbose': False}
+
+    gp1 = AdditiveGP(x, y, k1, opt_params=gp_opt_params,
+                     # lik_variance=1, lik_variance_fixed=True,
+                     y_norm='meanstd')
+    gp1.optimize()
+
+    # Single kernel GP
+    k2 = GPy.kern.RBF(3)
+
+    hp_bounds = np.array([[1., 1.],  # kernel variance
+                          [1e-4, 3],  # lengthscale
+                          [1e-6, 100],  # likelihood variance
+                          ])
+    gp_opt_params = {'method': 'multigrad',
+                     'num_restarts': 10,
+                     'restart_bounds': hp_bounds,
+                     # likelihood variance
+                     'hp_bounds': hp_bounds,
+                     'verbose': False}
+
+    gp2 = GP(x_one_hot, y, k2, opt_params=gp_opt_params,
+             # lik_variance=1, lik_variance_fixed=True,
+             y_norm='meanstd')
+    gp2.optimize()
+
+    # Check outputs
+    # mu, var = gp.predict_latent_continuous(x_test)
+    mu1, var1 = gp1.predict(x_test)
+    mu1, var1 = mu1.flatten(), var1.flatten()
+    print(gp1)
+
+    mu2, var2 = gp2.predict(x_one_hot_test)
+    mu2, var2 = mu2.flatten(), var2.flatten()
+    print(gp2)
+
+    f, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10))
+    ax1.plot(x_cont_test, mu1, 'r-')
+    ax1.fill_between(x_cont_test.flatten(), mu1 - 2 * np.sqrt(var1),
+                     mu1 + 2 * np.sqrt(var1), color='r', alpha=0.2)
+    ax2.plot(x_cont_test, mu2, 'g-')
+    ax2.fill_between(x_cont_test.flatten(), mu2 - 2 * np.sqrt(var2),
+                     mu2 + 2 * np.sqrt(var2), color='g', alpha=0.2)
+
+    plt.show()
+
+
 if __name__ == '__main__':
     # test_creation()
     # test_subspace_learning()
@@ -348,5 +452,6 @@ if __name__ == '__main__':
     # test_rbf_with_delta()
     # test_stationary_with_cat()
     # test_mixed_kernel_gradients()
-    test_cont_cat_inputs()
+    # test_cont_cat_inputs()
     # test_subspace_pred()
+    test_cont_cat_inputs_sin_linear_func()
