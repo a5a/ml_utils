@@ -7,7 +7,7 @@ import numpy as np
 from bayesopt.acquisition import EI
 from ml_utils.models.gp import GP
 from ml_utils.models.additive_gp import AdditiveGP, \
-    StationaryUniformCat, MixtureViaSumAndProduct
+    StationaryUniformCat, MixtureViaSumAndProduct, CategoryOverlapKernel
 
 #
 #
@@ -500,6 +500,17 @@ def test_kernel_mixture_via_sum_and_product():
     plt.show()
 
 
+def test_cat_kernel():
+    n = 10
+    x = np.random.randint(0, 2, (n, 5))
+
+    k_cat = CategoryOverlapKernel(2, active_dims=[0, 1])
+
+    print(x[:, :2])
+    print(k_cat.K(x, x))
+    print(k_cat)
+
+
 if __name__ == '__main__':
     # test_creation()
     # test_subspace_learning()
@@ -511,4 +522,5 @@ if __name__ == '__main__':
     # test_subspace_pred()
     # test_cont_cat_inputs_sin_linear_func()
     # test_combination_kernel_hps()
-    test_kernel_mixture_via_sum_and_product()
+    # test_kernel_mixture_via_sum_and_product()
+    test_cat_kernel()

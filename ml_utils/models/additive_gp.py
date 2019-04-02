@@ -4,6 +4,8 @@ import GPy
 from typing import Optional, List, Union
 
 # from scipy.spatial.distance import pdist
+from paramz.transformations import Logexp
+
 from ml_utils.models import GP
 import numpy as np
 
@@ -157,6 +159,33 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         k1_xx = self.k1.K(X, X2)
         k2_xx = self.k2.K(X, X2)
         return (1 - self.mix) * (k1_xx + k2_xx) + self.mix * k1_xx * k2_xx
+
+
+class CategoryOverlapKernel(GPy.kern.Kern):
+    """
+    Kernel that counts the number of categories that are the same
+    between inputs and returns the normalised similarity score:
+
+    variance * 1/N_c * (degree of overlap)
+    """
+    def __init__(self, input_dim, variance=1.0, active_dims=None,
+                 name='catoverlap'):
+        super().__init__(input_dim, active_dims=active_dims, name=name)
+        self.variance = GPy.core.parameterization.Param('variance',
+                                                        variance, Logexp())
+        self.link_parameter(self.variance)
+
+    def K(self, X, X2):
+        # Counting the number of categories that are the same using GPy's
+        # broadcasting approach
+        diff = X[:, None] - X2[None, :]
+        # nonzero location = different cat
+        diff[np.where(np.abs(diff))] = 1
+        # invert, to now count same cats
+        diff1 = np.logical_not(diff)
+        # dividing by number of cat variables to keep this term in range [0,1]
+        k_cat = self.variance * np.sum(diff1, -1) / self.input_dim
+        return k_cat
 
 
 class StationaryUniformCat(GPy.kern.Kern):
