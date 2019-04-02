@@ -176,7 +176,7 @@ class GP(object):
             s += "param_array = " + str(self.param_array) + "\n"
             s += "X.shape = " + str(self.X.shape) + "\n"
             s += "Y.shape = " + str(self.Y.shape) + "\n"
-            s += "Objective = " + str(self.objective()) + "\n"
+            s += "Objective (marginal joint) = " + str(-self.objective()) + "\n"
         else:
             s = "GP with " + self.kern.name + " kernel\n"
             s += "Inference method: " + self.opt_params['method'] + "\n"
