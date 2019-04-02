@@ -474,11 +474,23 @@ def test_kernel_mixture_via_sum_and_product():
     k1 = GPy.kern.RBF(3, active_dims=[0, 1, 2])
     k2 = GPy.kern.Matern52(2, active_dims=[3, 4])
 
-    k = MixtureViaSumAndProduct(5, k1, k2, mix=0.5, fix_variances=False)
+    k = MixtureViaSumAndProduct(5, k1, k2, mix=0.5, fix_variances=True)
+
+    hp_bounds = np.array([[1e-4, 3],  # k1
+                          [1e-4, 3],  # k2
+                          [1e-6, 100],  # likelihood variance
+                          ])
+    gp_opt_params = {'method': 'multigrad',
+                     'num_restarts': 10,
+                     'restart_bounds': hp_bounds,
+                     # likelihood variance
+                     'hp_bounds': hp_bounds,
+                     'verbose': False}
+
     # print(k)
     # print(k.param_array)
 
-    gp = GP(x, y, k)
+    gp = GP(x, y, k, opt_params=gp_opt_params)
     print(gp)
     gp.optimize()
     print(gp)

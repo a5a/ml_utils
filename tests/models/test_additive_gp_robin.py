@@ -5,12 +5,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 from ml_utils.models.gp import GP
 from ml_utils.models.additive_gp import AdditiveGP, \
-    StationaryUniformCat
+    StationaryUniformCat, MixtureViaSumAndProduct
+from ml_utils.optimization import sample_then_minimize
 from testFunctions.syntheticFunctions import sin_plus_linear, sin_plus_exp
 from sklearn.preprocessing import OneHotEncoder
 
 
 def generate_x_y(f, n, cat_ub=2, x_cat=None):
+    np.random.seed(42)
     # Cat + Cont Inputs
     x_cont = 2 * np.random.rand(n)[:, None] - 1
 
@@ -44,31 +46,58 @@ def test_regression_with_cont_cat_inputs(f, n_ob=50, n_test=100, cat_ub=2):
     x_cont_ob, x_ob, x_one_hot_ob, y_ob = generate_x_y(f, n_ob, cat_ub=cat_ub)
 
     # TEST
-    x_cat_test = 1 * np.ones((n_test, 1))
+    x_cat_test = 0 * np.ones((n_test, 1))
     x_cont_test, x_test, x_one_hot_test, y_test = generate_x_y(f, n_test, cat_ub=cat_ub, x_cat=x_cat_test)
 
     # ---- Define GP models  ---- #
-    # Mixed kernel GP
-    k_rbf = GPy.kern.RBF(1, active_dims=[0])
-    k1 = StationaryUniformCat(kernel=k_rbf, cat_dims=[1])
+    # # Mixed kernel GP
+    # k_rbf = GPy.kern.RBF(1, active_dims=[1])
+    # k1 = StationaryUniformCat(kernel=k_rbf, cat_dims=[0])
+    #
+    # hp_bounds = np.array([[1., 1.],  # kernel variance
+    #                       [1e-4, 3],  # lengthscale
+    #                       [1e-6, 100],  # likelihood variance
+    #                       ])
+    # gp_opt_params = {'method': 'multigrad',
+    #                  'num_restarts': 10,
+    #                  'restart_bounds': hp_bounds,
+    #                  # likelihood variance
+    #                  'hp_bounds': hp_bounds,
+    #                  'verbose': False}
+    #
+    # gp1 = AdditiveGP(x_ob, y_ob, k1, opt_params=gp_opt_params,
+    #                  y_norm='meanstd')
+    # gp1.optimize()
 
-    hp_bounds = np.array([[1., 1.],  # kernel variance
-                          [1e-4, 3],  # lengthscale
-                          [1e-6, 100],  # likelihood variance
+    # SumProduct kernel
+    k_cat = GPy.kern.RBF(1, active_dims=[0])  # cat
+    k_cont = GPy.kern.RBF(1, active_dims=[1])  # cont
+
+    k = MixtureViaSumAndProduct(2, k_cat, k_cont, mix=0.5, fix_variances=True)
+
+    hp_bounds = np.array([[1e-4, 3],  # k1
+                          [1e-4, 3],  # k2
+                          [1e-6, 1.],  # likelihood variance
                           ])
-    gp_opt_params = {'method': 'multigrad',
-                     'num_restarts': 10,
-                     'restart_bounds': hp_bounds,
-                     # likelihood variance
-                     'hp_bounds': hp_bounds,
-                     'verbose': False}
 
-    gp1 = AdditiveGP(x_ob, y_ob, k1, opt_params=gp_opt_params,
-                     y_norm='meanstd')
-    gp1.optimize()
+    gp1 = GP(x_ob, y_ob, k)
+
+    def f(x):
+        gp1.param_array = x
+        return -gp1.log_likelihood()
+
+    res = sample_then_minimize(
+        f,
+        hp_bounds,
+        num_samples=1000,
+        num_local=0,
+        evaluate_sequentially=True,
+        verbose=False)
+
+    gp1.param_array = res.x
 
     # Single kernel one hot GP
-    k2 = GPy.kern.RBF(3)
+    k_cont = GPy.kern.RBF(3)
     hp_bounds = np.array([[1., 1.],  # kernel variance
                           [1e-4, 3],  # lengthscale
                           [1e-6, 100],  # likelihood variance
@@ -79,7 +108,7 @@ def test_regression_with_cont_cat_inputs(f, n_ob=50, n_test=100, cat_ub=2):
                      # likelihood variance
                      'hp_bounds': hp_bounds,
                      'verbose': False}
-    gp2 = GP(x_one_hot_ob, y_ob, k2, opt_params=gp_opt_params,
+    gp2 = GP(x_one_hot_ob, y_ob, k_cont, opt_params=gp_opt_params,
              # lik_variance=1, lik_variance_fixed=True,
              y_norm='meanstd')
     gp2.optimize()
@@ -110,7 +139,7 @@ def test_regression_with_cont_cat_inputs(f, n_ob=50, n_test=100, cat_ub=2):
         axes[i].legend()
 
     plt.show()
-    plt.savefig("sin_plus_exp.pdf", bbox_inches='tight')
+    # plt.savefig("sin_plus_exp.pdf", bbox_inches='tight')
 
 
 if __name__ == '__main__':
