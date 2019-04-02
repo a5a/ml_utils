@@ -15,7 +15,7 @@ class AdditiveGP(GP):
     """
 
     def predict_latent_continuous(self, x_star: np.ndarray,
-                       full_cov: bool = False):
+                                  full_cov: bool = False):
         """
         Predict the latent space given the continuous kernel only
         """
@@ -100,6 +100,59 @@ class AdditiveGP(GP):
 #         distances = pdist(X, X2)
 
 
+class MixtureViaSumAndProduct(GPy.kern.Kern):
+    """
+    Kernel of the form
+
+    k = (1-mix)*(k1 + k2) + mix*k1*k2
+    """
+
+    def __init__(self, input_dim, k1, k2, active_dims=None, mix=0.5,
+                 fix_variances=False):
+        super().__init__(input_dim, active_dims, 'MixtureViaSumAndProduct')
+        self.mix = mix
+        self.k1 = k1
+        self.k2 = k2
+
+        if fix_variances:
+            self.k1.unlink_parameter(self.k1.variance)
+            self.k2.unlink_parameter(self.k2.variance)
+
+        self.link_parameters(self.k1, self.k2)
+
+    def update_gradients_full(self, dL_dK, X, X2=None):
+        # This gets the values of dk/dtheta
+        self.k1.update_gradients_full(dL_dK, X, X2)
+        self.k2.update_gradients_full(dL_dK, X, X2)
+
+        k1_xx = self.k1.K(X, X2)
+        k2_xx = self.k2.K(X, X2)
+
+        dk1_dtheta1 = self.k1.gradient
+        dk2_dtheta2 = self.k2.gradient
+
+        dk_dtheta1 = np.zeros(*dk1_dtheta1.shape)
+        dk_dtheta2 = np.zeros(*dk2_dtheta2.shape)
+
+        # This requires summation over the kernel values, so each param is
+        # done separately for now. This can probably be vectorized if
+        # performance becomes an issue and this step is taking long.
+        for ii in range(len(dk_dtheta1)):
+            dk_dtheta1[ii] = dk1_dtheta1[ii] * (1 - self.mix) \
+                             + np.sum(self.mix * dk1_dtheta1[ii] * k2_xx)
+        for ii in range(len(dk_dtheta2)):
+            dk_dtheta2[ii] = dk2_dtheta2[ii] * (1 - self.mix) + \
+                             np.sum(self.mix * dk2_dtheta2[ii] * k1_xx)
+
+        self.k1.gradient = dk_dtheta1
+        self.k2.gradient = dk_dtheta2
+
+    def K(self, X, X2=None):
+        k1_xx = self.k1.K(X, X2)
+        k2_xx = self.k2.K(X, X2)
+        return (1 - self.mix) * (k1_xx + k2_xx) + self.mix * k1_xx * k2_xx
+
+
 class StationaryUniformCat(GPy.kern.Kern):
     """
     Kernel that is a combination of a stationary kernel and a
@@ -158,7 +211,8 @@ class StationaryUniformCat(GPy.kern.Kern):
 
         # Update the variance gradient using the contribution of the categories
         stat_grad = self.kernel.variance.gradient
-        cat_kern_contrib = np.sum(self.K_cat(X, X2=X2) * dL_dK) / self.kernel.variance
+        cat_kern_contrib = np.sum(
+            self.K_cat(X, X2=X2) * dL_dK) / self.kernel.variance
 
         self.kernel.variance.gradient = stat_grad + cat_kern_contrib
         # print(f"Updating gradient: "

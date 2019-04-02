@@ -7,7 +7,7 @@ import numpy as np
 from bayesopt.acquisition import EI
 from ml_utils.models.gp import GP
 from ml_utils.models.additive_gp import AdditiveGP, \
-    StationaryUniformCat
+    StationaryUniformCat, MixtureViaSumAndProduct
 
 #
 #
@@ -445,6 +445,49 @@ def test_cont_cat_inputs_sin_linear_func():
     plt.show()
 
 
+def test_combination_kernel_hps():
+    n = 100
+    x = np.random.rand(n, 5)
+    y = np.sin(np.sum(3 * x, 1))
+    y = (y.reshape(-1, 1) - np.mean(y)) / np.std(y)
+
+    k1 = GPy.kern.RBF(3, active_dims=[0, 1, 2])
+    k2 = GPy.kern.Matern52(2, active_dims=[3, 4])
+
+    k = k1 + k2
+    print(k)
+    k = k + k1 * k2
+    print(k)
+
+    gp = GP(x, y, k)
+    gp.optimize()
+    print(gp)
+
+
+def test_kernel_mixture_via_sum_and_product():
+    np.random.seed(1)
+    n = 100
+    x = np.sort(np.random.rand(n, 5), 0)
+    y = np.sin(np.sum(3 * x, 1))
+    y = (y.reshape(-1, 1) - np.mean(y)) / np.std(y)
+
+    k1 = GPy.kern.RBF(3, active_dims=[0, 1, 2])
+    k2 = GPy.kern.Matern52(2, active_dims=[3, 4])
+
+    k = MixtureViaSumAndProduct(5, k1, k2, mix=0.5, fix_variances=False)
+    # print(k)
+    # print(k.param_array)
+
+    gp = GP(x, y, k)
+    print(gp)
+    gp.optimize()
+    print(gp)
+
+    Kxx = k.K(x, x)
+    plt.imshow(Kxx)
+    plt.show()
+
+
 if __name__ == '__main__':
     # test_creation()
     # test_subspace_learning()
@@ -454,4 +497,6 @@ if __name__ == '__main__':
     # test_mixed_kernel_gradients()
     # test_cont_cat_inputs()
     # test_subspace_pred()
-    test_cont_cat_inputs_sin_linear_func()
+    # test_cont_cat_inputs_sin_linear_func()
+    # test_combination_kernel_hps()
+    test_kernel_mixture_via_sum_and_product()
