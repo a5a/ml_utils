@@ -10,9 +10,15 @@ import numpy as np
 
 class AdditiveGP(GP):
     """
+    OBSOLETE
+
     Utility subclass with some useful shortcuts related to the
     cont-cat input GP
     """
+
+    def __init__(self, *args, **kwargs):
+        print("This class is obsolete!")
+        super().__init__(*args, **kwargs)
 
     def predict_latent_continuous(self, x_star: np.ndarray,
                                   full_cov: bool = False):
@@ -155,12 +161,15 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
 
 class StationaryUniformCat(GPy.kern.Kern):
     """
+    OBSOLETE
+
     Kernel that is a combination of a stationary kernel and a
     categorical kernel. Each cat input has the same weight and is
     the cat variables' contribution to K() is normalised to [0, 1]
     """
 
     def __init__(self, kernel: GPy.kern.RBF, cat_dims):
+        print("This class is obsolete!")
         self.cat_dims = cat_dims
         self.kernel = kernel
 
