@@ -1,3 +1,4 @@
+import sys
 from pprint import pprint
 
 import GPy
@@ -8,6 +9,8 @@ from bayesopt.acquisition import EI
 from ml_utils.models.gp import GP
 from ml_utils.models.additive_gp import AdditiveGP, \
     StationaryUniformCat, MixtureViaSumAndProduct, CategoryOverlapKernel
+
+import numdifftools as nd
 
 #
 #
@@ -474,7 +477,11 @@ def test_kernel_mixture_via_sum_and_product():
     k1 = GPy.kern.RBF(3, active_dims=[0, 1, 2], ARD=True)
     k2 = GPy.kern.Matern52(2, active_dims=[3, 4], ARD=True)
 
-    k = MixtureViaSumAndProduct(5, k1, k2, mix=0.5, fix_variances=False)
+    k = MixtureViaSumAndProduct(5, k1, k2, mix=0., fix_variances=False)
+
+    k3 = GPy.kern.RBF(3, active_dims=[0, 1, 2], ARD=True)
+    k4 = GPy.kern.Matern52(2, active_dims=[3, 4], ARD=True)
+    k_test = k3+k4
 
     hp_bounds = np.array([[1e-4, 3],  # k1
                           [1e-4, 3],  # k2
@@ -496,9 +503,37 @@ def test_kernel_mixture_via_sum_and_product():
     # print(k.param_array)
 
     gp = GP(x, y, k, opt_params=gp_opt_params)
+    gp_test = GP(x, y, k_test, opt_params=gp_opt_params)
     print(gp)
+    print(gp_test)
+    print(gp.gradient)
+    def ll(theta):
+        old_theta = gp.param_array
+        gp.param_array = theta
+        loglik = gp.log_likelihood()
+        gp.param_array = old_theta
+        return loglik
+    G = nd.Gradient(ll, step=0.01)(gp.param_array)
+    print(G)
+
+    print(gp_test.gradient)
+
+    def ll(theta):
+        old_theta = gp_test.param_array
+        gp_test.param_array = theta
+        loglik = gp_test.log_likelihood()
+        gp_test.param_array = old_theta
+        return loglik
+
+    G = nd.Gradient(ll, step=0.01)(gp_test.param_array)
+    print(G)
+    print(np.allclose(gp.gradient, gp_test.gradient))
+
+
     gp.optimize()
     print(gp)
+
+
 
     Kxx = k.K(x, x)
     plt.imshow(Kxx)

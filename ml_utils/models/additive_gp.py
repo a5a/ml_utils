@@ -151,9 +151,11 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
                     X_sliced[:, q:q + 1] - X2_sliced[:, q:q + 1].T) /
                                     k.lengthscale[q] ** 3
                                     for q in range(k.input_dim)])
+                dk_dl = dk_dr[..., None] * dr_dl
             else:
                 r = k._scaled_dist(X_sliced, X2_sliced)
                 dr_dl = - r / k.lengthscale
+                dk_dl = dk_dr * dr_dl
 
             # # For testing the broadcast multiplication
             # dk_dl_slow = []
@@ -163,8 +165,6 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
             #     dk_dl_slow.append(dk_dlj)
             #
             # dk_dl_slow = np.dstack(dk_dl_slow)
-
-            dk_dl = dk_dr[..., None] * dr_dl
 
         else:
             raise NotImplementedError
@@ -200,28 +200,30 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         # dk/dl for l1 and l2
         # ARD requires a summation along last axis for each lengthscale
         if self.k1.ARD:
-            dk_dl1 = np.sum(dk1_dl1 * (1 - self.mix)
-                            + self.mix * dk1_dl1 * k2_xx[..., None], (0, 1))
+            dk_dl1 = np.sum(dL_dK[..., None] * (dk1_dl1 * (1 - self.mix)
+                                     + self.mix * dk1_dl1 * k2_xx[..., None]),
+                            (0, 1))
         else:
-            dk_dl1 = np.sum(dk1_dl1 * (1 - self.mix)
-                            + self.mix * dk1_dl1 * k2_xx)
+            dk_dl1 = np.sum(dL_dK * (dk1_dl1 * (1 - self.mix)
+                                     + self.mix * dk1_dl1 * k2_xx))
 
         if self.k2.ARD:
-            dk_dl2 = np.sum(dk2_dl2 * (1 - self.mix)
-                            + self.mix * dk2_dl2 * k1_xx[..., None], (0, 1))
+            dk_dl2 = np.sum(dL_dK[..., None] * (dk2_dl2 * (1 - self.mix)
+                                     + self.mix * dk2_dl2 * k1_xx[..., None]),
+                            (0, 1))
         else:
-            dk_dl2 = np.sum(dk2_dl2 * (1 - self.mix)
-                            + self.mix * dk2_dl2 * k1_xx)
+            dk_dl2 = np.sum(dL_dK * (dk2_dl2 * (1 - self.mix)
+                                     + self.mix * dk2_dl2 * k1_xx))
 
         # dk/dvar for var1 and var 2
         if self.fix_variances:
             dk_dvar1 = []
             dk_dvar2 = []
         else:
-            dk_dvar1 = np.sum(dk1_dvar1 * (1 - self.mix)
-                       + self.mix * dk1_dvar1 * k2_xx)
-            dk_dvar2 = np.sum(dk2_dvar2 * (1 - self.mix)
-                       + self.mix * dk2_dvar2 * k1_xx)
+            dk_dvar1 = np.sum(dL_dK * (dk1_dvar1 * (1 - self.mix)
+                                       + self.mix * dk1_dvar1 * k2_xx))
+            dk_dvar2 = np.sum(dL_dK * (dk2_dvar2 * (1 - self.mix)
+                                       + self.mix * dk2_dvar2 * k1_xx))
 
         # Combining the gradients into one vector and updating
         dk_dtheta1 = np.hstack((dk_dvar1, dk_dl1))
