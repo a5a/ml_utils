@@ -168,6 +168,7 @@ class CategoryOverlapKernel(GPy.kern.Kern):
 
     variance * 1/N_c * (degree of overlap)
     """
+
     def __init__(self, input_dim, variance=1.0, active_dims=None,
                  name='catoverlap'):
         super().__init__(input_dim, active_dims=active_dims, name=name)
@@ -186,6 +187,9 @@ class CategoryOverlapKernel(GPy.kern.Kern):
         # dividing by number of cat variables to keep this term in range [0,1]
         k_cat = self.variance * np.sum(diff1, -1) / self.input_dim
         return k_cat
+
+    def update_gradients_full(self, dL_dK, X, X2=None):
+        self.variance.gradient = np.sum(self.K(X, X2) * dL_dK) / self.variance
 
 
 class StationaryUniformCat(GPy.kern.Kern):
