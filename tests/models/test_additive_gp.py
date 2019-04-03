@@ -471,14 +471,19 @@ def test_kernel_mixture_via_sum_and_product():
     y = np.sin(np.sum(3 * x, 1))
     y = (y.reshape(-1, 1) - np.mean(y)) / np.std(y)
 
-    k1 = GPy.kern.RBF(3, active_dims=[0, 1, 2])
-    k2 = GPy.kern.Matern52(2, active_dims=[3, 4])
+    k1 = GPy.kern.RBF(3, active_dims=[0, 1, 2], ARD=True)
+    k2 = GPy.kern.Matern52(2, active_dims=[3, 4], ARD=True)
 
-    k = MixtureViaSumAndProduct(5, k1, k2, mix=0.5, fix_variances=True)
+    k = MixtureViaSumAndProduct(5, k1, k2, mix=0.5, fix_variances=False)
 
     hp_bounds = np.array([[1e-4, 3],  # k1
                           [1e-4, 3],  # k2
-                          [1e-6, 100],  # likelihood variance
+                          [1e-4, 3],
+                          [1e-4, 3],
+                          [1e-4, 3],
+                          [1e-4, 3],
+                          [1e-4, 3],
+                          [1e-6, 3],  # likelihood variance
                           ])
     gp_opt_params = {'method': 'multigrad',
                      'num_restarts': 10,
@@ -522,5 +527,5 @@ if __name__ == '__main__':
     # test_subspace_pred()
     # test_cont_cat_inputs_sin_linear_func()
     # test_combination_kernel_hps()
-    # test_kernel_mixture_via_sum_and_product()
-    test_cat_kernel()
+    test_kernel_mixture_via_sum_and_product()
+    # test_cat_kernel()
