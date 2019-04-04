@@ -20,7 +20,7 @@ import scipydirect
 from scipy.optimize import OptimizeResult
 
 from ..misc import timed_print as print
-from ..optimization import minimize_with_restarts
+from ..optimization import minimize_with_restarts, sample_then_minimize
 
 
 class GP(object):
@@ -581,6 +581,36 @@ class GP(object):
                 print("New model")
                 print(self)
             return res
+
+        elif opt_params['method'] == 'samplegrad':
+            if 'minimize_options' in opt_params.keys():
+                minimize_options = opt_params['minimize_options']
+            else:
+                minimize_options = None
+
+            if 'num_samples' in opt_params.keys():
+                num_samples = opt_params['num_samples']
+            else:
+                num_samples = 1000
+            if 'num_local' in opt_params.keys():
+                num_local = opt_params['num_local']
+            else:
+                num_local = 5
+
+            hp_bounds = np.log(opt_params['hp_bounds'])
+
+            res = sample_then_minimize(
+                self.objective_log_theta,
+                hp_bounds,
+                num_samples=num_samples,
+                num_local=num_local,
+                jac=self.objective_grad_log_theta,
+                minimize_options=minimize_options,
+                evaluate_sequentially=True,
+                verbose=False)
+
+            self.param_array = np.exp(res.x)
+
 
         elif opt_params['method'] == 'slice':
             print("Running optimize with slice sampling inside a model class!",
