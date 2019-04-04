@@ -30,84 +30,6 @@ class AdditiveGP(GP):
         return super().predict_latent(x_star, full_cov, kern=self.kern.kernel)
 
 
-# def create_additive_kernel(k1_class, k2_class,
-#                            active_dims1, active_dims2,
-#                            k1_args=None, k2_args=None):
-#     """
-#     Creates additive kernel of kern_type + delta
-#     """
-#     assert active_dims1 is not None
-#     assert active_dims2 is not None
-#
-#     if k1_args is None:
-#         k1_args = {}
-#
-#     if k2_args is None:
-#         k2_args = {}
-#
-#     k1 = k1_class(len(active_dims1), active_dims=active_dims1, **k1_args)
-#     k2 = k2_class(len(active_dims2), active_dims=active_dims2, **k2_args)
-#
-#     k_combined = k1 + k2
-#
-#     return k_combined
-
-
-# class KernelWithDelta():
-#     """
-#     Recursion depth errors....
-#     """
-#
-#     def __init__(self, kern, delta_dims):
-#         self.delta_dims = delta_dims
-#         self.kern = kern
-#
-#     def K(self, X, X0=None):
-#         # todo
-#         raise NotImplementedError
-#
-#     def __getattr__(self, name):
-#         """
-#         This redirects any methods that are not explicitly set
-#         to self.original_model.
-#
-#         This function is only called if the called attribute
-#         doesn't already exist.
-#
-#         If original_model.name is a method, then it will be run.
-#         Otherwise the element will just be accessed.
-#         """
-#         if self.verbose:
-#             print("Calling function '{}' of embedded model".format(name))
-#         if callable(getattr(self.kern, name)):
-#             try:
-#                 return getattr(self.kern, name)(*args, **kwargs)
-#             except NameError:  # no args provided
-#                 return getattr(self.kern, name)()
-#         else:
-#             return getattr(self.kern, name)
-#
-#
-# class RBFWithDelta(GPy.kern.RBF):
-#     def __init__(self, active_dims_k=None, active_dims_delta=None,
-#                  name='rbfdelta', **kwargs):
-#         self.delta_dims = active_dims_delta
-#         input_dim = len(active_dims_k)
-#         super().__init__(input_dim, active_dims=active_dims_k, name=name,
-#                          **kwargs)
-#
-#     def K(self, X, X2=None):
-#         if X2 is None:
-#             X2 = X.copy()
-#
-#         kernel_K = super().K(X, X2)
-#
-#         X_delta = X[:, self.delta_dims]
-#         X2_delta = X2[:, self.delta_dims]
-#
-#         distances = pdist(X, X2)
-
-
 class MixtureViaSumAndProduct(GPy.kern.Kern):
     """
     Kernel of the form
@@ -115,15 +37,17 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
     k = (1-mix)*(k1 + k2) + mix*k1*k2
     """
 
-    def __init__(self, input_dim, k1, k2, active_dims=None, mix=0.5,
-                 fix_variances=False):
+    def __init__(self, input_dim: int, k1: GPy.kern.Kern, k2: GPy.kern.Kern,
+                 active_dims: Union[list, np.ndarray] = None, mix: float = 0.5,
+                 fix_variances: bool = False):
+
         super().__init__(input_dim, active_dims, 'MixtureViaSumAndProduct')
 
-        acceptable_kernels = (GPy.kern.RBF, GPy.kern.Matern52,
-                              CategoryOverlapKernel)
+        self.acceptable_kernels = (GPy.kern.RBF, GPy.kern.Matern52,
+                                   CategoryOverlapKernel)
 
-        assert isinstance(k1, acceptable_kernels)
-        assert isinstance(k2, acceptable_kernels)
+        assert isinstance(k1, self.acceptable_kernels)
+        assert isinstance(k2, self.acceptable_kernels)
 
         self.mix = mix
         self.k1 = k1
@@ -136,7 +60,9 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
 
         self.link_parameters(self.k1, self.k2)
 
-    def get_dk_dtheta(self, k, X, X2=None):
+    def get_dk_dtheta(self, k: GPy.kern.Kern, X, X2=None):
+        assert isinstance(k, self.acceptable_kernels)
+
         if X2 is None:
             X2 = X
         X_sliced, X2_sliced = X[:, k.active_dims], X2[:, k.active_dims]
@@ -165,6 +91,9 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
             #     dk_dl_slow.append(dk_dlj)
             #
             # dk_dl_slow = np.dstack(dk_dl_slow)
+
+        elif isinstance(k, CategoryOverlapKernel):
+            dk_dl = None
 
         else:
             raise NotImplementedError
@@ -198,22 +127,32 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         k2_xx = self.k2.K(X, X2)  # N x N
 
         # dk/dl for l1 and l2
-        # ARD requires a summation along last axis for each lengthscale
-        if self.k1.ARD:
-            dk_dl1 = np.sum(dL_dK[..., None] * (dk1_dl1 * (1 - self.mix)
-                                     + self.mix * dk1_dl1 * k2_xx[..., None]),
-                            (0, 1))
+        # If gradient is None, then vars other than lengthscale don't exist.
+        # This is relevant for the CategoryOverlapKernel
+        if dk1_dl1 is not None:
+            # ARD requires a summation along last axis for each lengthscale
+            if hasattr(self.k1, 'ARD') and self.k1.ARD:
+                dk_dl1 = np.sum(dL_dK[..., None] * (dk1_dl1 * (1 - self.mix)
+                                                    + self.mix * dk1_dl1 *
+                                                    k2_xx[..., None]),
+                                (0, 1))
+            else:
+                dk_dl1 = np.sum(dL_dK * (dk1_dl1 * (1 - self.mix)
+                                         + self.mix * dk1_dl1 * k2_xx))
         else:
-            dk_dl1 = np.sum(dL_dK * (dk1_dl1 * (1 - self.mix)
-                                     + self.mix * dk1_dl1 * k2_xx))
+            dk_dl1 = []
 
-        if self.k2.ARD:
-            dk_dl2 = np.sum(dL_dK[..., None] * (dk2_dl2 * (1 - self.mix)
-                                     + self.mix * dk2_dl2 * k1_xx[..., None]),
-                            (0, 1))
+        if dk2_dl2 is not None:
+            if hasattr(self.k2, 'ARD') and self.k2.ARD:
+                dk_dl2 = np.sum(dL_dK[..., None] * (dk2_dl2 * (1 - self.mix)
+                                                    + self.mix * dk2_dl2 *
+                                                    k1_xx[..., None]),
+                                (0, 1))
+            else:
+                dk_dl2 = np.sum(dL_dK * (dk2_dl2 * (1 - self.mix)
+                                         + self.mix * dk2_dl2 * k1_xx))
         else:
-            dk_dl2 = np.sum(dL_dK * (dk2_dl2 * (1 - self.mix)
-                                     + self.mix * dk2_dl2 * k1_xx))
+            dk_dl2 = []
 
         # dk/dvar for var1 and var 2
         if self.fix_variances:
@@ -242,7 +181,7 @@ class CategoryOverlapKernel(GPy.kern.Kern):
     Kernel that counts the number of categories that are the same
     between inputs and returns the normalised similarity score:
 
-    variance * 1/N_c * (degree of overlap)
+    k = variance * 1/N_c * (degree of overlap)
     """
 
     def __init__(self, input_dim, variance=1.0, active_dims=None,
@@ -252,7 +191,10 @@ class CategoryOverlapKernel(GPy.kern.Kern):
                                                         variance, Logexp())
         self.link_parameter(self.variance)
 
-    def K(self, X, X2):
+    def K(self, X, X2=None):
+        if X2 is None:
+            X2 = X
+
         # Counting the number of categories that are the same using GPy's
         # broadcasting approach
         diff = X[:, None] - X2[None, :]

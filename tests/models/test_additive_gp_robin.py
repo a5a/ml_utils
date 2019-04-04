@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from ml_utils.models.gp import GP
 from ml_utils.models.additive_gp import AdditiveGP, \
-    StationaryUniformCat, MixtureViaSumAndProduct
+    StationaryUniformCat, MixtureViaSumAndProduct, CategoryOverlapKernel
 from ml_utils.optimization import sample_then_minimize
 from testFunctions.syntheticFunctions import sin_plus_linear, sin_plus_exp
 from sklearn.preprocessing import OneHotEncoder
@@ -35,19 +35,21 @@ def generate_x_y(f, n, cat_ub=2, x_cat=None):
         y[ii] = f(x_cat[ii], x_cont[ii])
 
     y = y.reshape(-1, 1)
-    y += 0.1 * np.random.randn(*y.shape)
+    y += 0.05 * np.random.randn(*y.shape)
 
-    return  x_cont, x, x_one_hot, y
+    return x_cont, x, x_one_hot, y
 
 
 def test_regression_with_cont_cat_inputs(f, n_ob=50, n_test=100, cat_ub=2):
-
     # TRAIN
     x_cont_ob, x_ob, x_one_hot_ob, y_ob = generate_x_y(f, n_ob, cat_ub=cat_ub)
+    # y_ob = (y_ob - np.mean(y_ob))/np.std(y_ob)
 
     # TEST
-    x_cat_test = 0 * np.ones((n_test, 1))
-    x_cont_test, x_test, x_one_hot_test, y_test = generate_x_y(f, n_test, cat_ub=cat_ub, x_cat=x_cat_test)
+    x_cat_test = 1 * np.ones((n_test, 1))
+    x_cont_test, x_test, x_one_hot_test, y_test = generate_x_y(f, n_test,
+                                                               cat_ub=cat_ub,
+                                                               x_cat=x_cat_test)
 
     # ---- Define GP models  ---- #
     # # Mixed kernel GP
@@ -69,46 +71,57 @@ def test_regression_with_cont_cat_inputs(f, n_ob=50, n_test=100, cat_ub=2):
     #                  y_norm='meanstd')
     # gp1.optimize()
 
-    # SumProduct kernel
-    k_cat = GPy.kern.RBF(1, active_dims=[0])  # cat
-    k_cont = GPy.kern.RBF(1, active_dims=[1])  # cont
-
-    k = MixtureViaSumAndProduct(2, k_cat, k_cont, mix=0.5, fix_variances=True)
-
-    hp_bounds = np.array([[1e-4, 3],  # k1
-                          [1e-4, 3],  # k2
-                          [1e-6, 1.],  # likelihood variance
-                          ])
-
-    gp1 = GP(x_ob, y_ob, k)
-
-    def f(x):
-        gp1.param_array = x
-        return -gp1.log_likelihood()
-
-    res = sample_then_minimize(
-        f,
-        hp_bounds,
-        num_samples=1000,
-        num_local=0,
-        evaluate_sequentially=True,
-        verbose=False)
-
-    gp1.param_array = res.x
-
-    # Single kernel one hot GP
-    k_cont = GPy.kern.RBF(3)
-    hp_bounds = np.array([[1., 1.],  # kernel variance
-                          [1e-4, 3],  # lengthscale
-                          [1e-6, 100],  # likelihood variance
-                          ])
+    hp_bounds = np.array([
+        # [1., 1.],  # kernel variance
+        [1e-4, 3],  # lengthscale
+        [1e-6, 1],  # likelihood variance
+    ])
     gp_opt_params = {'method': 'multigrad',
                      'num_restarts': 10,
                      'restart_bounds': hp_bounds,
                      # likelihood variance
                      'hp_bounds': hp_bounds,
                      'verbose': False}
-    gp2 = GP(x_one_hot_ob, y_ob, k_cont, opt_params=gp_opt_params,
+
+    hp_bounds2 = np.array([
+        [1., 1.],  # kernel variance
+        [1e-4, 3],  # lengthscale
+        [1e-6, 1],  # likelihood variance
+    ])
+    gp_opt_params2 = {'method': 'multigrad',
+                      'num_restarts': 10,
+                      'restart_bounds': hp_bounds2,
+                      # likelihood variance
+                      'hp_bounds': hp_bounds2,
+                      'verbose': False}
+
+    # SumProduct kernel
+    # k_cat = GPy.kern.RBF(1, active_dims=[0])  # cat
+    k_cat = CategoryOverlapKernel(1, active_dims=[0])  # cat
+    k_cont = GPy.kern.RBF(1, active_dims=[1])  # cont
+
+    k = MixtureViaSumAndProduct(2, k_cat, k_cont, mix=0.5, fix_variances=True)
+
+    gp1 = GP(x_ob, y_ob, k, opt_params=gp_opt_params, y_norm='meanstd')
+    print(gp1)
+    gp1.optimize()
+    # def f(x):
+    #     gp1.param_array = x
+    #     return -gp1.log_likelihood()
+
+    # res = sample_then_minimize(
+    #     f,
+    #     hp_bounds,
+    #     num_samples=1000,
+    #     num_local=2,
+    #     evaluate_sequentially=True,
+    #     verbose=False)
+    #
+    # gp1.param_array = res.x
+
+    # Single kernel one hot GP
+    k_cont = GPy.kern.RBF(3)
+    gp2 = GP(x_one_hot_ob, y_ob, k_cont, opt_params=gp_opt_params2,
              # lik_variance=1, lik_variance_fixed=True,
              y_norm='meanstd')
     gp2.optimize()
@@ -126,14 +139,16 @@ def test_regression_with_cont_cat_inputs(f, n_ob=50, n_test=100, cat_ub=2):
     # ---- Plots results  ---- #
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10))
     axes = [ax1, ax2]
-    mu    = [mu1, mu2]
-    var   = [var1, var2]
-    color = ['b','g']
-    label = ['addgp','gp']
+    mu = [mu1, mu2]
+    var = [var1, var2]
+    color = ['b', 'g']
+    label = ['addgp', 'gp']
     for i in range(len(axes)):
-        axes[i].fill_between(x_cont_test.flatten(), mu[i] - 2 * np.sqrt(var[i]),
-                         mu[i] + 2 * np.sqrt(var[i]), color=color[i], alpha=0.2)
-        axes[i].plot(x_cont_test, mu[i], color[i]+'-', label=label[i])
+        axes[i].fill_between(x_cont_test.flatten(),
+                             mu[i] - 2 * np.sqrt(var[i]),
+                             mu[i] + 2 * np.sqrt(var[i]), color=color[i],
+                             alpha=0.2)
+        axes[i].plot(x_cont_test, mu[i], color[i] + '-', label=label[i])
         axes[i].plot(x_cont_test, y_test, 'k--', label='true')
         axes[i].plot(x_cont_ob, y_ob, 'rx', label='true')
         axes[i].legend()
