@@ -35,11 +35,30 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
     Kernel of the form
 
     k = (1-mix)*(k1 + k2) + mix*k1*k2
+
+
+    Parameters
+    ----------
+    input_dim
+        number of all dims (for k1 and k2 together)
+    k1
+        First kernel
+    k2
+        Second kernel
+    active_dims
+        active dims of this kernel
+    mix
+        see equation above
+    fix_variances
+        unlinks the variance parameters if set to True
+    fix_mix
+        Does not register mix as a parameter that can be learned
+
     """
 
     def __init__(self, input_dim: int, k1: GPy.kern.Kern, k2: GPy.kern.Kern,
                  active_dims: Union[list, np.ndarray] = None, mix: float = 0.5,
-                 fix_variances: bool = False):
+                 fix_variances: bool = False, fix_mix=True):
 
         super().__init__(input_dim, active_dims, 'MixtureViaSumAndProduct')
 
@@ -49,7 +68,12 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         assert isinstance(k1, self.acceptable_kernels)
         assert isinstance(k2, self.acceptable_kernels)
 
-        self.mix = mix
+        self.mix = GPy.core.parameterization.Param('mix', mix, Logexp())
+        self.fix_mix = fix_mix
+        # If we are learning the mix, then add it as a visible param
+        if not self.fix_mix:
+            self.link_parameter(self.mix)
+
         self.k1 = k1
         self.k2 = k2
 
@@ -169,6 +193,10 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         dk_dtheta2 = np.hstack((dk_dvar2, dk_dl2))
         self.k1.gradient = dk_dtheta1
         self.k2.gradient = dk_dtheta2
+
+        if not self.fix_mix:
+            self.mix.gradient = np.sum(dL_dK *
+                                       (-(k1_xx + k2_xx) + (k1_xx * k2_xx)))
 
     def K(self, X, X2=None):
         k1_xx = self.k1.K(X, X2)
