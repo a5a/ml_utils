@@ -302,7 +302,10 @@ class GP(object):
             if self.verbose > 1:
                 print("set_data(): removing mean of Y from data")
         elif self.y_norm == 'meanstd':
-            self.Y = (self.Y_raw - self.y_mean) / self.y_std
+            if self.y_std == 0:  # fix for when all y are the same
+                self.Y = (self.Y_raw - self.y_mean) / 1.0
+            else:
+                self.Y = (self.Y_raw - self.y_mean) / self.y_std
 
         else:
             self.Y = self.Y_raw
