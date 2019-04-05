@@ -103,6 +103,7 @@ def sample_then_minimize(
         optimiser_func: Callable,
         bounds: np.ndarray,
         num_samples: Optional[int] = 1000,
+        num_chunks: Optional[int] = 4,
         num_local: Optional[int] = 5,
         jac: Optional[Callable] = None,
         minimize_options: Optional[Dict] = None,
@@ -122,6 +123,9 @@ def sample_then_minimize(
     num_samples
         Number of initial samples to take. Sampling is done uniformly
         using the bounds as limits
+
+    num_chunks
+        Number of batches to evaluate the samples in
 
     num_local
         Number of local optimizations. This is the number of most promising
@@ -168,7 +172,12 @@ def sample_then_minimize(
         if verbose:
             print(f"Evaluating {num_samples} locations")
 
-        f_samples = optimiser_func(x_samples)
+        x_chunks = np.split(x_samples, num_chunks)
+        f_samples_list = []
+        for x_chunk in x_chunks:
+            f_samples_list.append(optimiser_func(x_chunk))
+
+        f_samples = np.hstack(f_samples_list)
 
     if num_local > 0:
         best_indexes = f_samples.argsort()[::-1][-num_local:]
