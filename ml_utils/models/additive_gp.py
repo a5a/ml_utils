@@ -10,6 +10,30 @@ from ml_utils.models import GP
 import numpy as np
 
 
+class GPWithSomeFixedDimsAtStart(GP):
+    """
+    Utility class that allows for predict() interface while only providing
+    a subset of the inputs and filling in the missing ones.
+
+    If the fixed dims are h and the provided values are x,
+    then the predict() function returns the posterior at z = [h, x]
+    """
+
+    def __init__(self, *args, fixed_dim_vals=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        assert fixed_dim_vals is not None
+        self.fixed_dim_vals = np.array(fixed_dim_vals).flatten()
+
+    def predict_latent(self, x_star: np.ndarray, full_cov: bool = False):
+        """
+        Predict at z = [h, x]
+        """
+        h_star = np.vstack([self.fixed_dim_vals]*len(x_star))
+
+        z_star = np.hstack((h_star, x_star))
+
+        return super().predict_latent(z_star, full_cov)
+
 class AdditiveGP(GP):
     """
     OBSOLETE

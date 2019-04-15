@@ -8,7 +8,8 @@ import numpy as np
 from bayesopt.acquisition import EI
 from ml_utils.models.gp import GP
 from ml_utils.models.additive_gp import AdditiveGP, \
-    StationaryUniformCat, MixtureViaSumAndProduct, CategoryOverlapKernel
+    StationaryUniformCat, MixtureViaSumAndProduct, CategoryOverlapKernel, \
+    GPWithSomeFixedDimsAtStart
 
 import numdifftools as nd
 
@@ -579,6 +580,42 @@ def test_cat_kernel():
     print(k_cat)
 
 
+def test_gp_with_fixed_dims():
+    n_x = 50
+    n_test = 20
+    categorical_dims = [0, 1]
+    continuous_dims = [2, 3, 4]
+    x_var = np.random.randn(n_x, len(continuous_dims))
+    x_fixed = np.random.randint(0, 2, (n_x, len(categorical_dims)))
+
+    x = np.hstack((x_fixed, x_var))
+
+    y = np.sum(np.sin(4*x), 1)
+    y = (y-np.mean(y))/np.std(y)
+    y = y.reshape(-1, 1)
+
+    k_cont = GPy.kern.Matern52(len(continuous_dims)+len(categorical_dims),
+                               ARD=False)
+    gp1 = GP(x, y, k_cont)
+    gp2 = GPWithSomeFixedDimsAtStart(x, y, k_cont, fixed_dim_vals=[1, 1])
+
+    x_test_cont = np.random.randn(n_test, len(continuous_dims))
+    x_test_fixed = np.vstack([[1, 1]]*n_test)
+
+    x_test1 = np.hstack((
+        x_test_fixed,
+        x_test_cont
+    ))
+
+    x_test2 = x_test_cont
+
+    mu1, var1 = gp1.predict(x_test1)
+    mu2, var2 = gp2.predict(x_test2)
+
+    print(np.allclose(mu1, mu2))
+    print(np.allclose(var1, var2))
+
+
 if __name__ == '__main__':
     # test_creation()
     # test_subspace_learning()
@@ -591,5 +628,6 @@ if __name__ == '__main__':
     # test_cont_cat_inputs_sin_linear_func()
     # test_combination_kernel_hps()
     # test_kernel_mixture_via_sum_and_product()
-    test_kernel_mixture_learning()
+    # test_kernel_mixture_learning()
     # test_cat_kernel()
+    test_gp_with_fixed_dims()
