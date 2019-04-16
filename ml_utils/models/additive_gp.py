@@ -1,7 +1,7 @@
 from pprint import pprint
 import pylab as plt
 import GPy
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Tuple
 
 # from scipy.spatial.distance import pdist
 from paramz.transformations import Logexp
@@ -24,15 +24,24 @@ class GPWithSomeFixedDimsAtStart(GP):
         assert fixed_dim_vals is not None
         self.fixed_dim_vals = np.array(fixed_dim_vals).flatten()
 
-    def predict_latent(self, x_star: np.ndarray, full_cov: bool = False):
+    def add_fixed_to_x(self, x_star):
+        h_star = np.vstack([self.fixed_dim_vals] * len(x_star))
+        z_star = np.hstack((h_star, x_star))
+        return z_star
+
+    def predict_latent(self, x_star: np.ndarray, full_cov: bool = False,
+                       kern=None):
         """
         Predict at z = [h, x]
         """
-        h_star = np.vstack([self.fixed_dim_vals]*len(x_star))
 
-        z_star = np.hstack((h_star, x_star))
+        return super().predict_latent(self.add_fixed_to_x(x_star),
+                                      full_cov, kern)
 
-        return super().predict_latent(z_star, full_cov)
+    def dposterior_dx(self, x_star: np.ndarray) \
+            -> Tuple[np.ndarray, np.ndarray]:
+        return super().dposterior_dx(self.add_fixed_to_x(x_star))
+
 
 class AdditiveGP(GP):
     """
@@ -226,6 +235,45 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         k1_xx = self.k1.K(X, X2)
         k2_xx = self.k2.K(X, X2)
         return (1 - self.mix) * (k1_xx + k2_xx) + self.mix * k1_xx * k2_xx
+
+    def gradients_X(self, dL_dK, X, X2, which_k=2):
+        """
+        This function evaluates the gradients w.r.t. the kernel's inputs.
+        Default is set to the second kernel, due to this function's
+        use in categorical+continuous BO requiring gradients w.r.t.
+        the continuous space, which is generally the second kernel.
+
+        which_k = 1  # derivative w.r.t. k1 space
+        which_k = 2  # derivative w.r.t. k2 space
+        """
+        if which_k == 1:
+            active_kern = self.k1
+            other_kern = self.k2
+        elif which_k == 2:
+            active_kern = self.k2
+            other_kern = self.k1
+        else:
+            raise NotImplementedError(f"Bad selection of which_k = {which_k}")
+
+        # TODO: Test these numbers...
+        # Evaluate the kernel grads in a loop, as the function internally
+        # sums up results, which is something we want to avoid until
+        # the last step
+        active_kern_grads = np.zeros((len(X), len(X2), self.input_dim))
+        for ii in range(len(X)):
+            for jj in range(len(X2)):
+                active_kern_grads[ii, jj, :] = \
+                    active_kern.gradients_X(
+                        np.atleast_2d(dL_dK[ii, jj]),
+                        np.atleast_2d(X[ii]),
+                        np.atleast_2d(X2[jj]))
+
+        other_kern_vals = other_kern.K(X, X2)
+
+        out = np.sum(active_kern_grads *
+                     (1 - self.mix + self.mix * other_kern_vals[...,None]),
+                     axis=1)
+        return out
 
 
 class CategoryOverlapKernel(GPy.kern.Kern):
