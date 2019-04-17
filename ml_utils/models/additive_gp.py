@@ -246,14 +246,7 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         which_k = 1  # derivative w.r.t. k1 space
         which_k = 2  # derivative w.r.t. k2 space
         """
-        if which_k == 1:
-            active_kern = self.k1
-            other_kern = self.k2
-        elif which_k == 2:
-            active_kern = self.k2
-            other_kern = self.k1
-        else:
-            raise NotImplementedError(f"Bad selection of which_k = {which_k}")
+        active_kern, other_kern = self.get_active_kernel(which_k)
 
         # TODO: Test these numbers...
         # Evaluate the kernel grads in a loop, as the function internally
@@ -275,6 +268,24 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
                      axis=1)
         return out
 
+    def gradients_X_diag(self, dL_dKdiag, X, which_k=2):
+        active_kern, other_kern = self.get_active_kernel(which_k)
+        if isinstance(active_kern, GPy.kern.src.stationary.Stationary):
+            return np.zeros(X.shape)
+        else:
+            raise NotImplementedError("gradients_X_diag not implemented "
+                                      "for this type of kernel")
+
+    def get_active_kernel(self, which_k):
+        if which_k == 1:
+            active_kern = self.k1
+            other_kern = self.k2
+        elif which_k == 2:
+            active_kern = self.k2
+            other_kern = self.k1
+        else:
+            raise NotImplementedError(f"Bad selection of which_k = {which_k}")
+        return active_kern, other_kern
 
 class CategoryOverlapKernel(GPy.kern.Kern):
     """
