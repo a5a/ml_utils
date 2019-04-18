@@ -5,7 +5,7 @@ import GPy
 import matplotlib.pyplot as plt
 import numpy as np
 
-from bayesopt.acquisition import EI
+# from bayesopt.acquisition import EI
 from ml_utils.models.gp import GP
 from ml_utils.models.additive_gp import AdditiveGP, \
     StationaryUniformCat, MixtureViaSumAndProduct, CategoryOverlapKernel, \
@@ -590,17 +590,17 @@ def test_gp_with_fixed_dims():
 
     x = np.hstack((x_fixed, x_var))
 
-    y = np.sum(np.sin(4*x), 1)
-    y = (y-np.mean(y))/np.std(y)
+    y = np.sum(np.sin(4 * x), 1)
+    y = (y - np.mean(y)) / np.std(y)
     y = y.reshape(-1, 1)
 
-    k_cont = GPy.kern.Matern52(len(continuous_dims)+len(categorical_dims),
+    k_cont = GPy.kern.Matern52(len(continuous_dims) + len(categorical_dims),
                                ARD=False)
     gp1 = GP(x, y, k_cont)
     gp2 = GPWithSomeFixedDimsAtStart(x, y, k_cont, fixed_dim_vals=[1, 1])
 
     x_test_cont = np.random.randn(n_test, len(continuous_dims))
-    x_test_fixed = np.vstack([[1, 1]]*n_test)
+    x_test_fixed = np.vstack([[1, 1]] * n_test)
 
     x_test1 = np.hstack((
         x_test_fixed,
@@ -614,6 +614,35 @@ def test_gp_with_fixed_dims():
 
     print(np.allclose(mu1, mu2))
     print(np.allclose(var1, var2))
+
+
+def test_extreme_case_for_mixture_kernel():
+    # seed = 1
+    # np.random.seed(seed)
+    n = 33
+    d_x = 30
+    d_h = 3
+
+    x = np.random.rand(n, d_x)
+    h = np.random.randint(0, 200, (n, d_h))
+    print(h)
+    z = np.hstack((h, x))
+    # y = np.sin(np.sum(3 * z, 1))
+    # y = (y.reshape(-1, 1) - np.mean(y)) / np.std(y)
+
+    k1 = CategoryOverlapKernel(d_h, active_dims=list(range(d_h)))
+    k2 = GPy.kern.Matern52(d_x, active_dims=np.arange(d_h, d_x + d_h))
+
+    k = MixtureViaSumAndProduct(d_x + d_h, k1, k2, mix=1.0,
+                                fix_variances=False)
+
+    k_vals = k.K(z, z)
+
+    plt.imshow(k_vals)
+    plt.show()
+
+    # print(z)
+    print(k_vals)
 
 
 if __name__ == '__main__':
@@ -630,4 +659,5 @@ if __name__ == '__main__':
     # test_kernel_mixture_via_sum_and_product()
     # test_kernel_mixture_learning()
     # test_cat_kernel()
-    test_gp_with_fixed_dims()
+    # test_gp_with_fixed_dims()
+    test_extreme_case_for_mixture_kernel()
