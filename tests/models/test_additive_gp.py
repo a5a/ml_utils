@@ -645,6 +645,74 @@ def test_extreme_case_for_mixture_kernel():
     print(k_vals)
 
 
+def test_mixture_kernel_computations():
+    seed = 1
+    np.random.seed(seed)
+    n = 20
+    d_x = 3
+    d_h = 3
+
+    x = np.random.rand(n, d_x)
+    h = np.random.randint(0, 20, (n, d_h))
+    z = np.hstack((h, x))
+    y = np.sin(np.sum(3 * z, 1))
+    y = (y.reshape(-1, 1) - np.mean(y)) / np.std(y)
+
+    k1 = CategoryOverlapKernel(d_h, active_dims=list(range(d_h)))
+    k2 = GPy.kern.Matern52(d_x, active_dims=np.arange(d_h, d_x + d_h))
+
+    # kernel values
+    for mix in (0, 0.1, 0.5, 0.9, 1.):
+        k = MixtureViaSumAndProduct(d_x + d_h, k1, k2, mix=mix,
+                                    fix_variances=False)
+        k_vals = k.K(z, z)
+
+        k_vals_2 = 0.5 * (1 - mix) * (k1.K(z) + k2.K(z)) \
+                   + mix * k1.K(z) * k2.K(z)
+
+        print(np.allclose(k_vals, k_vals_2), end=" ")
+    print("\nKernel values tested")
+
+    # kernel gradient
+    curr_p = np.array(k.param_array)
+    delta = 0.01
+    gradient = []
+    gp = GP(z, y, k, lik_variance_fixed=True, lik_variance=1e-6)
+    for ii in range(len(curr_p)):
+        gp.param_array = curr_p
+
+        delta_p = curr_p[ii] * delta
+
+        p_plus = curr_p.copy()
+        p_plus[ii] += delta_p
+        p_minus = curr_p.copy()
+        p_minus[ii] -= delta_p
+
+        gp.param_array = p_plus
+        k = gp.kern
+        k_plus = k.K(z)
+        gp.param_array = p_minus
+        k = gp.kern
+        k_minus = k.K(z)
+
+        g = (k_plus - k_minus) / (2 * delta_p)
+
+        gradient.append(np.sum(g))
+
+    gp.param_array = curr_p
+
+    gradient = np.array(gradient)
+
+    k = gp.kern
+    k.update_gradients_full(1., z, z)
+    k_grad = k.gradient
+    print(gradient)
+    print(k_grad)
+
+    print(f"kernel gradients wrt theta: {np.allclose(gradient, k_grad, rtol=1e-3)}")
+
+
+
 if __name__ == '__main__':
     # test_creation()
     # test_subspace_learning()
@@ -660,4 +728,5 @@ if __name__ == '__main__':
     # test_kernel_mixture_learning()
     # test_cat_kernel()
     # test_gp_with_fixed_dims()
-    test_extreme_case_for_mixture_kernel()
+    # test_extreme_case_for_mixture_kernel()
+    test_mixture_kernel_computations()

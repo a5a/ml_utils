@@ -189,24 +189,24 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         if dk1_dl1 is not None:
             # ARD requires a summation along last axis for each lengthscale
             if hasattr(self.k1, 'ARD') and self.k1.ARD:
-                dk_dl1 = np.sum(dL_dK[..., None] * (dk1_dl1 * (1 - self.mix)
+                dk_dl1 = np.sum(dL_dK[..., None] * (0.5*dk1_dl1 * (1 - self.mix)
                                                     + self.mix * dk1_dl1 *
                                                     k2_xx[..., None]),
                                 (0, 1))
             else:
-                dk_dl1 = np.sum(dL_dK * (dk1_dl1 * (1 - self.mix)
+                dk_dl1 = np.sum(dL_dK * (0.5*dk1_dl1 * (1 - self.mix)
                                          + self.mix * dk1_dl1 * k2_xx))
         else:
             dk_dl1 = []
 
         if dk2_dl2 is not None:
             if hasattr(self.k2, 'ARD') and self.k2.ARD:
-                dk_dl2 = np.sum(dL_dK[..., None] * (dk2_dl2 * (1 - self.mix)
+                dk_dl2 = np.sum(dL_dK[..., None] * (0.5*dk2_dl2 * (1 - self.mix)
                                                     + self.mix * dk2_dl2 *
                                                     k1_xx[..., None]),
                                 (0, 1))
             else:
-                dk_dl2 = np.sum(dL_dK * (dk2_dl2 * (1 - self.mix)
+                dk_dl2 = np.sum(dL_dK * (0.5*dk2_dl2 * (1 - self.mix)
                                          + self.mix * dk2_dl2 * k1_xx))
         else:
             dk_dl2 = []
@@ -216,9 +216,9 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
             dk_dvar1 = []
             dk_dvar2 = []
         else:
-            dk_dvar1 = np.sum(dL_dK * (dk1_dvar1 * (1 - self.mix)
+            dk_dvar1 = np.sum(dL_dK * (0.5*dk1_dvar1 * (1 - self.mix)
                                        + self.mix * dk1_dvar1 * k2_xx))
-            dk_dvar2 = np.sum(dL_dK * (dk2_dvar2 * (1 - self.mix)
+            dk_dvar2 = np.sum(dL_dK * (0.5*dk2_dvar2 * (1 - self.mix)
                                        + self.mix * dk2_dvar2 * k1_xx))
 
         # Combining the gradients into one vector and updating
@@ -229,12 +229,13 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
 
         if not self.fix_mix:
             self.mix.gradient = np.sum(dL_dK *
-                                       (-(k1_xx + k2_xx) + (k1_xx * k2_xx)))
+                                       (-0.5*(k1_xx + k2_xx) + (k1_xx * k2_xx)))
 
     def K(self, X, X2=None):
         k1_xx = self.k1.K(X, X2)
         k2_xx = self.k2.K(X, X2)
-        return (1 - self.mix) * (k1_xx + k2_xx) + self.mix * k1_xx * k2_xx
+        return (1 - self.mix) * 0.5 * (k1_xx + k2_xx) \
+               + self.mix * k1_xx * k2_xx
 
     def gradients_X(self, dL_dK, X, X2, which_k=2):
         """
