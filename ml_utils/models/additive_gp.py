@@ -43,26 +43,6 @@ class GPWithSomeFixedDimsAtStart(GP):
         return super().dposterior_dx(self.add_fixed_to_x(x_star))
 
 
-# class AdditiveGP(GP):
-#     """
-#     OBSOLETE
-#
-#     Utility subclass with some useful shortcuts related to the
-#     cont-cat input GP
-#     """
-#
-#     def __init__(self, *args, **kwargs):
-#         print("This class is obsolete!")
-#         super().__init__(*args, **kwargs)
-#
-#     def predict_latent_continuous(self, x_star: np.ndarray,
-#                                   full_cov: bool = False):
-#         """
-#         Predict the latent space given the continuous kernel only
-#         """
-#         return super().predict_latent(x_star, full_cov, kern=self.kern.kernel)
-
-
 class MixtureViaSumAndProduct(GPy.kern.Kern):
     """
     Kernel of the form
@@ -199,26 +179,30 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
             # ARD requires a summation along last axis for each lengthscale
             if hasattr(self.k1, 'ARD') and self.k1.ARD:
                 dk_dl1 = np.sum(
-                    dL_dK[..., None] * (0.5 * dk1_dl1 * (1 - self.mix) * self.variance
-                                        + self.mix  * self.variance* dk1_dl1 *
-                                        k2_xx[..., None]),
+                    dL_dK[..., None] * (
+                                0.5 * dk1_dl1 * (1 - self.mix) * self.variance
+                                + self.mix * self.variance * dk1_dl1 *
+                                k2_xx[..., None]),
                     (0, 1))
             else:
-                dk_dl1 = np.sum(dL_dK * (0.5 * dk1_dl1 * (1 - self.mix) * self.variance
-                                         + self.mix  * self.variance* dk1_dl1 * k2_xx))
+                dk_dl1 = np.sum(
+                    dL_dK * (0.5 * dk1_dl1 * (1 - self.mix) * self.variance
+                             + self.mix * self.variance * dk1_dl1 * k2_xx))
         else:
             dk_dl1 = []
 
         if dk2_dl2 is not None:
             if hasattr(self.k2, 'ARD') and self.k2.ARD:
                 dk_dl2 = np.sum(
-                    dL_dK[..., None] * (0.5 * dk2_dl2 * (1 - self.mix) * self.variance
-                                        + self.mix  * self.variance* dk2_dl2 *
-                                        k1_xx[..., None]),
+                    dL_dK[..., None] * (
+                                0.5 * dk2_dl2 * (1 - self.mix) * self.variance
+                                + self.mix * self.variance * dk2_dl2 *
+                                k1_xx[..., None]),
                     (0, 1))
             else:
-                dk_dl2 = np.sum(dL_dK * (0.5 * dk2_dl2 * (1 - self.mix) * self.variance
-                                         + self.mix  * self.variance* dk2_dl2 * k1_xx))
+                dk_dl2 = np.sum(
+                    dL_dK * (0.5 * dk2_dl2 * (1 - self.mix) * self.variance
+                             + self.mix * self.variance * dk2_dl2 * k1_xx))
         else:
             dk_dl2 = []
 
@@ -227,10 +211,12 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
             dk_dvar1 = []
             dk_dvar2 = []
         else:
-            dk_dvar1 = np.sum(dL_dK * (0.5 * dk1_dvar1 * (1 - self.mix) * self.variance
-                                       + self.mix  * self.variance* dk1_dvar1 * k2_xx))
-            dk_dvar2 = np.sum(dL_dK * (0.5 * dk2_dvar2 * (1 - self.mix) * self.variance
-                                       + self.mix  * self.variance* dk2_dvar2 * k1_xx))
+            dk_dvar1 = np.sum(
+                dL_dK * (0.5 * dk1_dvar1 * (1 - self.mix) * self.variance
+                         + self.mix * self.variance * dk1_dvar1 * k2_xx))
+            dk_dvar2 = np.sum(
+                dL_dK * (0.5 * dk2_dvar2 * (1 - self.mix) * self.variance
+                         + self.mix * self.variance * dk2_dvar2 * k1_xx))
 
         # Combining the gradients into one vector and updating
         dk_dtheta1 = np.hstack((dk_dvar1, dk_dl1))
@@ -241,7 +227,7 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         # if not self.fix_mix:
         self.mix.gradient = np.sum(dL_dK *
                                    (-0.5 * (k1_xx + k2_xx) +
-                                        (k1_xx * k2_xx))) * self.variance
+                                    (k1_xx * k2_xx))) * self.variance
 
         # if not self.fix_variance:
         self.variance.gradient = \
@@ -251,7 +237,7 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         k1_xx = self.k1.K(X, X2)
         k2_xx = self.k2.K(X, X2)
         return self.variance * ((1 - self.mix) * 0.5 * (k1_xx + k2_xx)
-               + self.mix * k1_xx * k2_xx)
+                                + self.mix * k1_xx * k2_xx)
 
     def gradients_X(self, dL_dK, X, X2, which_k=2):
         """
