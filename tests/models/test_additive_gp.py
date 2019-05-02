@@ -658,12 +658,13 @@ def test_mixture_kernel_computations():
     # kernel values
     for mix in (0, 0.1, 0.5, 0.9, 1.):
         k = MixtureViaSumAndProduct(d_x + d_h, k1, k2, mix=mix,
+                                    variance=0.8,
                                     fix_inner_variances=False,
                                     fix_variance=False)
         k_vals = k.K(z, z)
 
-        k_vals_2 = 0.5 * (1 - mix) * (k1.K(z) + k2.K(z)) \
-                   + mix * k1.K(z) * k2.K(z)
+        k_vals_2 = 0.8 * (0.5 * (1 - mix) * (k1.K(z) + k2.K(z))
+                   + mix * k1.K(z) * k2.K(z))
 
         print(f"mix = {mix} similar? "
               f"{np.allclose(k_vals, k_vals_2)}")
@@ -709,7 +710,7 @@ def test_mixture_kernel_computations():
     # print(gp)
 
     print(f"kernel gradients wrt theta: "
-          f"{np.allclose(gradient, k_grad, rtol=1e-3)}")
+          f"{np.allclose(gradient, k_grad, rtol=1e-4)}")
 
 
 if __name__ == '__main__':
