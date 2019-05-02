@@ -2,10 +2,11 @@ import GPy
 import matplotlib.pyplot as plt
 import numdifftools as nd
 import numpy as np
+from sklearn.preprocessing import OneHotEncoder
 
 from ml_utils.models.additive_gp import MixtureViaSumAndProduct, \
     CategoryOverlapKernel, \
-    GPWithSomeFixedDimsAtStart
+    GPWithSomeFixedDimsAtStart, RBFCategoryOverlapKernel
 # from bayesopt.acquisition import EI
 from ml_utils.models.gp import GP
 
@@ -713,6 +714,41 @@ def test_mixture_kernel_computations():
           f"{np.allclose(gradient, k_grad, rtol=1e-4)}")
 
 
+def test_rbf_cat_kernel():
+    np.random.seed(2)
+    C = [2, 4, 3]
+    first_idx = [0, 2, 6]
+    n_x = 5
+    x = np.hstack([np.random.randint(0, c, (n_x, 1)) for c in C])
+
+    x_oh = []
+    for x_row in x:
+        row = np.zeros((np.sum(C)))
+        # print(row)
+        for ii in range(len(x_row)):
+            # print(ii)
+            row[first_idx[ii]+x_row[ii]] = 1
+
+        x_oh.append(row)
+
+    x_oh = np.vstack(x_oh)
+
+    k_ref = GPy.kern.RBF(np.sum(C))
+    k_ref_vals = k_ref.K(x_oh)
+
+    converter = OneHotEncoder(categories=([np.arange(c) for c in C]),
+                              sparse=False)
+    # Calling fit() makes the object usable
+    converter.fit(np.zeros((1, len(C))))
+
+    k_new = RBFCategoryOverlapKernel(C, converter,
+                                     active_dims=np.arange(len(C)))  # cat
+    k_new_vals = k_new.K(x)
+
+    print(k_ref_vals - k_new_vals)
+
+
+
 if __name__ == '__main__':
     # test_creation()
     # test_subspace_learning()
@@ -729,4 +765,5 @@ if __name__ == '__main__':
     # test_cat_kernel()
     # test_gp_with_fixed_dims()
     # test_extreme_case_for_mixture_kernel()
-    test_mixture_kernel_computations()
+    # test_mixture_kernel_computations()
+    test_rbf_cat_kernel()

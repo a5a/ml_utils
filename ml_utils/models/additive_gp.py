@@ -325,70 +325,38 @@ class CategoryOverlapKernel(GPy.kern.Kern):
         self.variance.gradient = np.sum(self.K(X, X2) * dL_dK) / self.variance
 
 
-# class StationaryUniformCat(GPy.kern.Kern):
-#     """
-#     OBSOLETE
-#
-#     Kernel that is a combination of a stationary kernel and a
-#     categorical kernel. Each cat input has the same weight and is
-#     the cat variables' contribution to K() is normalised to [0, 1]
-#     """
-#
-#     def __init__(self, kernel: GPy.kern.RBF, cat_dims):
-#         print("This class is obsolete!")
-#         self.cat_dims = cat_dims
-#         self.kernel = kernel
-#
-#         name = 'StationaryUniformCat'
-#         input_dim = self.kernel.input_dim + len(self.cat_dims)
-#         active_dim = np.arange(input_dim)
-#         super().__init__(input_dim, active_dim, name)
-#
-#         self.link_parameters(self.kernel)
-#
-#     def K(self, X, X2=None):
-#         if X2 is None:
-#             X2 = X
-#
-#         k_kernel = self.kernel.K(X, X2)
-#
-#         k_cat = self.K_cat(X, X2)
-#
-#         k_t = k_kernel + k_cat
-#         # f, (ax1, ax2, ax3) = plt.subplots(3, 1)
-#         # plt.title(f"min_kernel = {np.min(k_kernel)}, max_kernel = {np.max(k_kernel)}, \n"
-#         #             f"min_cat = {np.min(k_cat)}, max_cat = {np.max(k_cat)}")
-#         # ax1.imshow(k_kernel)
-#         # ax2.imshow(k_cat)
-#         # ax3.imshow(k_kernel + k_cat)
-#         # # f.colorbar()
-#         # plt.show()
-#         return k_t
-#
-#     def K_cat(self, X, X2):
-#         X_cat = X[:, self.cat_dims]
-#         X2_cat = X2[:, self.cat_dims]
-#
-#         # Counting the number of categories that are the same using GPy's
-#         # broadcasting approach
-#         diff = X_cat[:, None] - X2_cat[None, :]
-#         # nonzero location = different cat
-#         diff[np.where(np.abs(diff))] = 1
-#         # invert, to now count same cats
-#         diff1 = np.logical_not(diff)
-#         # dividing by number of cat variables to keep this term in range [0,1]
-#         k_cat = self.kernel.variance * np.sum(diff1, -1) / len(self.cat_dims)
-#         return k_cat
-#
-#     def update_gradients_full(self, dL_dK, X, X2=None):
-#         # Kernel gradients
-#         self.kernel.update_gradients_full(dL_dK, X, X2=X2)
-#
-#         # Update the variance gradient using the contribution of the categories
-#         stat_grad = self.kernel.variance.gradient
-#         cat_kern_contrib = np.sum(
-#             self.K_cat(X, X2=X2) * dL_dK) / self.kernel.variance
-#
-#         self.kernel.variance.gradient = stat_grad + cat_kern_contrib
-#         # print(f"Updating gradient: "
-#         #       f"{np.hstack((self.gradient, cat_kern_contrib))}")
+class RBFCategoryOverlapKernel(GPy.kern.RBF):
+    """
+    Kernel that counts the number of categories that are the same
+    between inputs and returns the normalised similarity score:
+
+    k = variance * exp(1/N_c * (degree of overlap))
+
+    converter = trained instance of sklearn OneHotEncoder
+    """
+
+    def __init__(self, C, converter, active_dims=None,
+                 fix_variance=True, fix_lengthscale=True,
+                 name='expcatoverlap'):
+        input_dim = len(C)
+        super().__init__(input_dim, active_dims=active_dims, name=name)
+
+        self.C = C
+        self.converter = converter
+        self.rbf = GPy.kern.RBF(np.sum(C))
+
+        if fix_variance:
+            self.rbf.unlink_parameter(self.rbf.variance)
+        if fix_lengthscale:
+            self.rbf.unlink_parameter(self.rbf.lengthscale)
+
+        self.link_parameter(self.rbf)
+
+    def K(self, X, X2=None):
+        if X2 is None:
+            X2 = X
+
+        X_t = self.converter.transform(X)
+        X2_t = self.converter.transform(X2)
+
+        return self.rbf.K(X_t, X2_t)
