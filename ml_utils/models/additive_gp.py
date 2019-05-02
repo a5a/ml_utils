@@ -43,24 +43,24 @@ class GPWithSomeFixedDimsAtStart(GP):
         return super().dposterior_dx(self.add_fixed_to_x(x_star))
 
 
-class AdditiveGP(GP):
-    """
-    OBSOLETE
-
-    Utility subclass with some useful shortcuts related to the
-    cont-cat input GP
-    """
-
-    def __init__(self, *args, **kwargs):
-        print("This class is obsolete!")
-        super().__init__(*args, **kwargs)
-
-    def predict_latent_continuous(self, x_star: np.ndarray,
-                                  full_cov: bool = False):
-        """
-        Predict the latent space given the continuous kernel only
-        """
-        return super().predict_latent(x_star, full_cov, kern=self.kern.kernel)
+# class AdditiveGP(GP):
+#     """
+#     OBSOLETE
+#
+#     Utility subclass with some useful shortcuts related to the
+#     cont-cat input GP
+#     """
+#
+#     def __init__(self, *args, **kwargs):
+#         print("This class is obsolete!")
+#         super().__init__(*args, **kwargs)
+#
+#     def predict_latent_continuous(self, x_star: np.ndarray,
+#                                   full_cov: bool = False):
+#         """
+#         Predict the latent space given the continuous kernel only
+#         """
+#         return super().predict_latent(x_star, full_cov, kern=self.kern.kernel)
 
 
 class MixtureViaSumAndProduct(GPy.kern.Kern):
@@ -90,8 +90,10 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
     """
 
     def __init__(self, input_dim: int, k1: GPy.kern.Kern, k2: GPy.kern.Kern,
-                 active_dims: Union[list, np.ndarray] = None, mix: float = 0.5,
-                 fix_variances: bool = False, fix_mix=True):
+                 active_dims: Union[list, np.ndarray] = None, variance=1.0,
+                 mix: float = 0.5,
+                 fix_inner_variances: bool = False, fix_mix=True,
+                 fix_variance=True):
 
         super().__init__(input_dim, active_dims, 'MixtureViaSumAndProduct')
 
@@ -102,16 +104,23 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         assert isinstance(k2, self.acceptable_kernels)
 
         self.mix = GPy.core.parameterization.Param('mix', mix, Logexp())
-        self.fix_mix = fix_mix
+        self.variance = GPy.core.parameterization.Param('variance', variance,
+                                                        Logexp())
+
+        self.fix_variance = fix_variance
+        if not self.fix_variance:
+            self.link_parameter(self.variance)
+
         # If we are learning the mix, then add it as a visible param
+        self.fix_mix = fix_mix
         if not self.fix_mix:
             self.link_parameter(self.mix)
 
         self.k1 = k1
         self.k2 = k2
 
-        self.fix_variances = fix_variances
-        if self.fix_variances:
+        self.fix_inner_variances = fix_inner_variances
+        if self.fix_inner_variances:
             self.k1.unlink_parameter(self.k1.variance)
             self.k2.unlink_parameter(self.k2.variance)
 
@@ -156,7 +165,7 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
             raise NotImplementedError
 
         # Return variance grad as well, if not fixed
-        if not self.fix_variances:
+        if not self.fix_inner_variances:
             return k.K(X, X2) / k.variance, dk_dl
         else:
             return dk_dl
@@ -170,7 +179,7 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         dk2_dtheta2 = self.get_dk_dtheta(self.k2, X, X2)  # N x N
 
         # Separate the variance and lengthscale grads (for ARD purposes)
-        if self.fix_variances:
+        if self.fix_inner_variances:
             dk1_dl1 = dk1_dtheta1
             dk2_dl2 = dk2_dtheta2
             dk1_dvar1 = []
@@ -189,37 +198,39 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         if dk1_dl1 is not None:
             # ARD requires a summation along last axis for each lengthscale
             if hasattr(self.k1, 'ARD') and self.k1.ARD:
-                dk_dl1 = np.sum(dL_dK[..., None] * (0.5*dk1_dl1 * (1 - self.mix)
-                                                    + self.mix * dk1_dl1 *
-                                                    k2_xx[..., None]),
-                                (0, 1))
+                dk_dl1 = np.sum(
+                    dL_dK[..., None] * (0.5 * dk1_dl1 * (1 - self.mix) * self.variance
+                                        + self.mix  * self.variance* dk1_dl1 *
+                                        k2_xx[..., None]),
+                    (0, 1))
             else:
-                dk_dl1 = np.sum(dL_dK * (0.5*dk1_dl1 * (1 - self.mix)
-                                         + self.mix * dk1_dl1 * k2_xx))
+                dk_dl1 = np.sum(dL_dK * (0.5 * dk1_dl1 * (1 - self.mix) * self.variance
+                                         + self.mix  * self.variance* dk1_dl1 * k2_xx))
         else:
             dk_dl1 = []
 
         if dk2_dl2 is not None:
             if hasattr(self.k2, 'ARD') and self.k2.ARD:
-                dk_dl2 = np.sum(dL_dK[..., None] * (0.5*dk2_dl2 * (1 - self.mix)
-                                                    + self.mix * dk2_dl2 *
-                                                    k1_xx[..., None]),
-                                (0, 1))
+                dk_dl2 = np.sum(
+                    dL_dK[..., None] * (0.5 * dk2_dl2 * (1 - self.mix) * self.variance
+                                        + self.mix  * self.variance* dk2_dl2 *
+                                        k1_xx[..., None]),
+                    (0, 1))
             else:
-                dk_dl2 = np.sum(dL_dK * (0.5*dk2_dl2 * (1 - self.mix)
-                                         + self.mix * dk2_dl2 * k1_xx))
+                dk_dl2 = np.sum(dL_dK * (0.5 * dk2_dl2 * (1 - self.mix) * self.variance
+                                         + self.mix  * self.variance* dk2_dl2 * k1_xx))
         else:
             dk_dl2 = []
 
         # dk/dvar for var1 and var 2
-        if self.fix_variances:
+        if self.fix_inner_variances:
             dk_dvar1 = []
             dk_dvar2 = []
         else:
-            dk_dvar1 = np.sum(dL_dK * (0.5*dk1_dvar1 * (1 - self.mix)
-                                       + self.mix * dk1_dvar1 * k2_xx))
-            dk_dvar2 = np.sum(dL_dK * (0.5*dk2_dvar2 * (1 - self.mix)
-                                       + self.mix * dk2_dvar2 * k1_xx))
+            dk_dvar1 = np.sum(dL_dK * (0.5 * dk1_dvar1 * (1 - self.mix) * self.variance
+                                       + self.mix  * self.variance* dk1_dvar1 * k2_xx))
+            dk_dvar2 = np.sum(dL_dK * (0.5 * dk2_dvar2 * (1 - self.mix) * self.variance
+                                       + self.mix  * self.variance* dk2_dvar2 * k1_xx))
 
         # Combining the gradients into one vector and updating
         dk_dtheta1 = np.hstack((dk_dvar1, dk_dl1))
@@ -227,15 +238,20 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         self.k1.gradient = dk_dtheta1
         self.k2.gradient = dk_dtheta2
 
-        if not self.fix_mix:
-            self.mix.gradient = np.sum(dL_dK *
-                                       (-0.5*(k1_xx + k2_xx) + (k1_xx * k2_xx)))
+        # if not self.fix_mix:
+        self.mix.gradient = np.sum(dL_dK *
+                                   (-0.5 * (k1_xx + k2_xx) +
+                                        (k1_xx * k2_xx))) * self.variance
+
+        # if not self.fix_variance:
+        self.variance.gradient = \
+            np.sum(self.K(X, X2) * dL_dK) / self.variance
 
     def K(self, X, X2=None):
         k1_xx = self.k1.K(X, X2)
         k2_xx = self.k2.K(X, X2)
-        return (1 - self.mix) * 0.5 * (k1_xx + k2_xx) \
-               + self.mix * k1_xx * k2_xx
+        return self.variance * ((1 - self.mix) * 0.5 * (k1_xx + k2_xx)
+               + self.mix * k1_xx * k2_xx)
 
     def gradients_X(self, dL_dK, X, X2, which_k=2):
         """
@@ -265,7 +281,7 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         other_kern_vals = other_kern.K(X, X2)
 
         out = np.sum(active_kern_grads *
-                     (1 - self.mix + self.mix * other_kern_vals[...,None]),
+                     (1 - self.mix + self.mix * other_kern_vals[..., None]),
                      axis=1)
         return out
 
@@ -287,6 +303,7 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         else:
             raise NotImplementedError(f"Bad selection of which_k = {which_k}")
         return active_kern, other_kern
+
 
 class CategoryOverlapKernel(GPy.kern.Kern):
     """
@@ -322,70 +339,70 @@ class CategoryOverlapKernel(GPy.kern.Kern):
         self.variance.gradient = np.sum(self.K(X, X2) * dL_dK) / self.variance
 
 
-class StationaryUniformCat(GPy.kern.Kern):
-    """
-    OBSOLETE
-
-    Kernel that is a combination of a stationary kernel and a
-    categorical kernel. Each cat input has the same weight and is
-    the cat variables' contribution to K() is normalised to [0, 1]
-    """
-
-    def __init__(self, kernel: GPy.kern.RBF, cat_dims):
-        print("This class is obsolete!")
-        self.cat_dims = cat_dims
-        self.kernel = kernel
-
-        name = 'StationaryUniformCat'
-        input_dim = self.kernel.input_dim + len(self.cat_dims)
-        active_dim = np.arange(input_dim)
-        super().__init__(input_dim, active_dim, name)
-
-        self.link_parameters(self.kernel)
-
-    def K(self, X, X2=None):
-        if X2 is None:
-            X2 = X
-
-        k_kernel = self.kernel.K(X, X2)
-
-        k_cat = self.K_cat(X, X2)
-
-        k_t = k_kernel + k_cat
-        # f, (ax1, ax2, ax3) = plt.subplots(3, 1)
-        # plt.title(f"min_kernel = {np.min(k_kernel)}, max_kernel = {np.max(k_kernel)}, \n"
-        #             f"min_cat = {np.min(k_cat)}, max_cat = {np.max(k_cat)}")
-        # ax1.imshow(k_kernel)
-        # ax2.imshow(k_cat)
-        # ax3.imshow(k_kernel + k_cat)
-        # # f.colorbar()
-        # plt.show()
-        return k_t
-
-    def K_cat(self, X, X2):
-        X_cat = X[:, self.cat_dims]
-        X2_cat = X2[:, self.cat_dims]
-
-        # Counting the number of categories that are the same using GPy's
-        # broadcasting approach
-        diff = X_cat[:, None] - X2_cat[None, :]
-        # nonzero location = different cat
-        diff[np.where(np.abs(diff))] = 1
-        # invert, to now count same cats
-        diff1 = np.logical_not(diff)
-        # dividing by number of cat variables to keep this term in range [0,1]
-        k_cat = self.kernel.variance * np.sum(diff1, -1) / len(self.cat_dims)
-        return k_cat
-
-    def update_gradients_full(self, dL_dK, X, X2=None):
-        # Kernel gradients
-        self.kernel.update_gradients_full(dL_dK, X, X2=X2)
-
-        # Update the variance gradient using the contribution of the categories
-        stat_grad = self.kernel.variance.gradient
-        cat_kern_contrib = np.sum(
-            self.K_cat(X, X2=X2) * dL_dK) / self.kernel.variance
-
-        self.kernel.variance.gradient = stat_grad + cat_kern_contrib
-        # print(f"Updating gradient: "
-        #       f"{np.hstack((self.gradient, cat_kern_contrib))}")
+# class StationaryUniformCat(GPy.kern.Kern):
+#     """
+#     OBSOLETE
+#
+#     Kernel that is a combination of a stationary kernel and a
+#     categorical kernel. Each cat input has the same weight and is
+#     the cat variables' contribution to K() is normalised to [0, 1]
+#     """
+#
+#     def __init__(self, kernel: GPy.kern.RBF, cat_dims):
+#         print("This class is obsolete!")
+#         self.cat_dims = cat_dims
+#         self.kernel = kernel
+#
+#         name = 'StationaryUniformCat'
+#         input_dim = self.kernel.input_dim + len(self.cat_dims)
+#         active_dim = np.arange(input_dim)
+#         super().__init__(input_dim, active_dim, name)
+#
+#         self.link_parameters(self.kernel)
+#
+#     def K(self, X, X2=None):
+#         if X2 is None:
+#             X2 = X
+#
+#         k_kernel = self.kernel.K(X, X2)
+#
+#         k_cat = self.K_cat(X, X2)
+#
+#         k_t = k_kernel + k_cat
+#         # f, (ax1, ax2, ax3) = plt.subplots(3, 1)
+#         # plt.title(f"min_kernel = {np.min(k_kernel)}, max_kernel = {np.max(k_kernel)}, \n"
+#         #             f"min_cat = {np.min(k_cat)}, max_cat = {np.max(k_cat)}")
+#         # ax1.imshow(k_kernel)
+#         # ax2.imshow(k_cat)
+#         # ax3.imshow(k_kernel + k_cat)
+#         # # f.colorbar()
+#         # plt.show()
+#         return k_t
+#
+#     def K_cat(self, X, X2):
+#         X_cat = X[:, self.cat_dims]
+#         X2_cat = X2[:, self.cat_dims]
+#
+#         # Counting the number of categories that are the same using GPy's
+#         # broadcasting approach
+#         diff = X_cat[:, None] - X2_cat[None, :]
+#         # nonzero location = different cat
+#         diff[np.where(np.abs(diff))] = 1
+#         # invert, to now count same cats
+#         diff1 = np.logical_not(diff)
+#         # dividing by number of cat variables to keep this term in range [0,1]
+#         k_cat = self.kernel.variance * np.sum(diff1, -1) / len(self.cat_dims)
+#         return k_cat
+#
+#     def update_gradients_full(self, dL_dK, X, X2=None):
+#         # Kernel gradients
+#         self.kernel.update_gradients_full(dL_dK, X, X2=X2)
+#
+#         # Update the variance gradient using the contribution of the categories
+#         stat_grad = self.kernel.variance.gradient
+#         cat_kern_contrib = np.sum(
+#             self.K_cat(X, X2=X2) * dL_dK) / self.kernel.variance
+#
+#         self.kernel.variance.gradient = stat_grad + cat_kern_contrib
+#         # print(f"Updating gradient: "
+#         #       f"{np.hstack((self.gradient, cat_kern_contrib))}")

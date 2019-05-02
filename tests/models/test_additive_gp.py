@@ -1,17 +1,14 @@
-import sys
-from pprint import pprint
-
 import GPy
 import matplotlib.pyplot as plt
+import numdifftools as nd
 import numpy as np
 
+from ml_utils.models.additive_gp import MixtureViaSumAndProduct, \
+    CategoryOverlapKernel, \
+    GPWithSomeFixedDimsAtStart
 # from bayesopt.acquisition import EI
 from ml_utils.models.gp import GP
-from ml_utils.models.additive_gp import AdditiveGP, \
-    StationaryUniformCat, MixtureViaSumAndProduct, CategoryOverlapKernel, \
-    GPWithSomeFixedDimsAtStart
 
-import numdifftools as nd
 
 #
 #
@@ -71,9 +68,6 @@ import numdifftools as nd
 #     axes[1].plot(x_ob[:, 0], x_ob[:, 1], 'r ^')
 #     axes[1].set_title('prediction')
 #     plt.show()
-
-
-from testFunctions.syntheticFunctions import sin_plus_linear, sin_plus_exp
 
 
 # def test_stationary_with_cat():
@@ -464,7 +458,7 @@ def test_kernel_mixture_via_sum_and_product():
     k1 = GPy.kern.RBF(3, active_dims=[0, 1, 2], ARD=True)
     k2 = GPy.kern.Matern52(2, active_dims=[3, 4], ARD=True)
 
-    k = MixtureViaSumAndProduct(5, k1, k2, mix=0.5, fix_variances=False)
+    k = MixtureViaSumAndProduct(5, k1, k2, mix=0.5, fix_inner_variances=False)
 
     k3 = GPy.kern.RBF(3, active_dims=[0, 1, 2], ARD=True)
     k4 = GPy.kern.Matern52(2, active_dims=[3, 4], ARD=True)
@@ -536,7 +530,7 @@ def test_kernel_mixture_learning():
     k1 = GPy.kern.RBF(3, active_dims=[0, 1, 2], ARD=True)
     k2 = GPy.kern.Matern52(2, active_dims=[3, 4], ARD=True)
 
-    k = MixtureViaSumAndProduct(5, k1, k2, mix=0.5, fix_variances=False,
+    k = MixtureViaSumAndProduct(5, k1, k2, mix=0.5, fix_inner_variances=False,
                                 fix_mix=False)
 
     hp_bounds = np.array([
@@ -634,7 +628,7 @@ def test_extreme_case_for_mixture_kernel():
     k2 = GPy.kern.Matern52(d_x, active_dims=np.arange(d_h, d_x + d_h))
 
     k = MixtureViaSumAndProduct(d_x + d_h, k1, k2, mix=1.0,
-                                fix_variances=False)
+                                fix_inner_variances=False)
 
     k_vals = k.K(z, z)
 
@@ -664,20 +658,24 @@ def test_mixture_kernel_computations():
     # kernel values
     for mix in (0, 0.1, 0.5, 0.9, 1.):
         k = MixtureViaSumAndProduct(d_x + d_h, k1, k2, mix=mix,
-                                    fix_variances=False)
+                                    fix_inner_variances=False,
+                                    fix_variance=False)
         k_vals = k.K(z, z)
 
         k_vals_2 = 0.5 * (1 - mix) * (k1.K(z) + k2.K(z)) \
                    + mix * k1.K(z) * k2.K(z)
 
-        print(np.allclose(k_vals, k_vals_2), end=" ")
-    print("\nKernel values tested")
+        print(f"mix = {mix} similar? "
+              f"{np.allclose(k_vals, k_vals_2)}")
+    # print("\nKernel values tested")
 
     # kernel gradient
-    curr_p = np.array(k.param_array)
-    delta = 0.01
+    delta = 0.0001
     gradient = []
     gp = GP(z, y, k, lik_variance_fixed=True, lik_variance=1e-6)
+    # perturb hps away from 1.
+    gp.param_array = gp.param_array * np.random.rand(*gp.param_array.shape)
+    curr_p = np.array(k.param_array)
     for ii in range(len(curr_p)):
         gp.param_array = curr_p
 
@@ -706,11 +704,12 @@ def test_mixture_kernel_computations():
     k = gp.kern
     k.update_gradients_full(1., z, z)
     k_grad = k.gradient
-    print(gradient)
-    print(k_grad)
+    # print(gradient)
+    # print(k_grad)
+    # print(gp)
 
-    print(f"kernel gradients wrt theta: {np.allclose(gradient, k_grad, rtol=1e-3)}")
-
+    print(f"kernel gradients wrt theta: "
+          f"{np.allclose(gradient, k_grad, rtol=1e-3)}")
 
 
 if __name__ == '__main__':

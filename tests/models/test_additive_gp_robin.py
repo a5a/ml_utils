@@ -100,7 +100,7 @@ def test_regression_with_cont_cat_inputs(f, n_ob=50, n_test=100, cat_ub=2):
     k_cat = CategoryOverlapKernel(1, active_dims=[0])  # cat
     k_cont = GPy.kern.RBF(1, active_dims=[1])  # cont
 
-    k = MixtureViaSumAndProduct(2, k_cat, k_cont, mix=0.5, fix_variances=True)
+    k = MixtureViaSumAndProduct(2, k_cat, k_cont, mix=0.5, fix_inner_variances=True)
 
     gp1 = GP(x_ob, y_ob, k, opt_params=gp_opt_params, y_norm='meanstd')
     print(gp1)
