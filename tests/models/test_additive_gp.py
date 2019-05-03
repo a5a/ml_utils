@@ -733,7 +733,7 @@ def test_rbf_cat_kernel():
 
     x_oh = np.vstack(x_oh)
 
-    k_ref = GPy.kern.RBF(np.sum(C))
+    k_ref = GPy.kern.RBF(np.sum(C), variance=0.8, lengthscale=1.2)
     k_ref_vals = k_ref.K(x_oh)
 
     converter = OneHotEncoder(categories=([np.arange(c) for c in C]),
@@ -741,7 +741,7 @@ def test_rbf_cat_kernel():
     # Calling fit() makes the object usable
     converter.fit(np.zeros((1, len(C))))
 
-    k_new = RBFCategoryOverlapKernel(C, converter,
+    k_new = RBFCategoryOverlapKernel(C, converter, variance=0.8, lengthscale=1.2,
                                      active_dims=np.arange(len(C)))  # cat
     k_new_vals = k_new.K(x)
 

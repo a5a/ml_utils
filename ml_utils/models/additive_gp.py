@@ -78,7 +78,8 @@ class MixtureViaSumAndProduct(GPy.kern.Kern):
         super().__init__(input_dim, active_dims, 'MixtureViaSumAndProduct')
 
         self.acceptable_kernels = (GPy.kern.RBF, GPy.kern.Matern52,
-                                   CategoryOverlapKernel)
+                                   CategoryOverlapKernel,
+                                   RBFCategoryOverlapKernel)
 
         assert isinstance(k1, self.acceptable_kernels)
         assert isinstance(k2, self.acceptable_kernels)
@@ -325,7 +326,7 @@ class CategoryOverlapKernel(GPy.kern.Kern):
         self.variance.gradient = np.sum(self.K(X, X2) * dL_dK) / self.variance
 
 
-class RBFCategoryOverlapKernel(GPy.kern.RBF):
+class RBFCategoryOverlapKernel(GPy.kern.Kern):
     """
     Kernel that counts the number of categories that are the same
     between inputs and returns the normalised similarity score:
@@ -336,14 +337,19 @@ class RBFCategoryOverlapKernel(GPy.kern.RBF):
     """
 
     def __init__(self, C, converter, active_dims=None,
-                 fix_variance=True, fix_lengthscale=True,
+                 fix_variance=False, fix_lengthscale=True,
+                 variance=1.0, lengthscale=1.0,
                  name='expcatoverlap'):
+        print("DON'T USE YET: Gradients and access to and updating of "
+              "RBF parameters not tested")
+
         input_dim = len(C)
         super().__init__(input_dim, active_dims=active_dims, name=name)
 
         self.C = C
         self.converter = converter
-        self.rbf = GPy.kern.RBF(np.sum(C))
+        self.rbf = GPy.kern.RBF(np.sum(C), lengthscale=lengthscale,
+                                variance=variance)
 
         if fix_variance:
             self.rbf.unlink_parameter(self.rbf.variance)
@@ -360,3 +366,12 @@ class RBFCategoryOverlapKernel(GPy.kern.RBF):
         X2_t = self.converter.transform(X2)
 
         return self.rbf.K(X_t, X2_t)
+
+    def update_gradients_full(self, dL_dK, X, X2=None):
+        if X2 is None:
+            X2 = X
+
+        X_t = self.converter.transform(X)
+        X2_t = self.converter.transform(X2)
+
+        self.rbf.update_gradients_full(dL_dK, X_t, X2_t)
