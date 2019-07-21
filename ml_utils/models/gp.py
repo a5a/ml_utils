@@ -104,7 +104,8 @@ class GP(object):
         self.verbose = verbose
         if remove_y_mean:
             self.y_norm = 'mean'
-            print("Stop using remove_y_mean!")
+            self.remove_y_mean = remove_y_mean
+            # print("Stop using remove_y_mean!")
         else:
             self.y_norm = y_norm  # 'mean', 'meanstd'
 
