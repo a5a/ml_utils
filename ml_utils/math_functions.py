@@ -58,7 +58,7 @@ def draw_from_a_gp(dim, x_lim, n=None, kern: GPy.kern = None, seed=None):
     def pred_func(t):
         t = t.reshape(-1, dim)
         m, v = model.predict(t)
-        return m
+        return m.flatten()
 
     # __name__ is used to define the filename of an experiment,
     # so making it more descriptive here.
